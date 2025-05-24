@@ -1,3 +1,7 @@
+# DEV BRANCH
+This branch is for development.
+When changes work on this branch I will merge with main.
+
 # Project overview
 
 This project aims to create a local app that listens to changes in a codebase and automatically sends changes to a RAG system.
