@@ -1,26 +1,60 @@
-# DEV BRANCH
-This branch is for development.
-When changes work on this branch I will merge with main.
+# Ducky - Local Code Mentor with RAG-Powered Feedback
 
-# Project overview
+**A file-watching assistant that analyzes your codebase changes and provides real-time feedback on code quality, patterns, and best practices.**
 
-This project aims to create a local app that listens to changes in a codebase and automatically sends changes to a RAG system.
-Large language models will suggest changes, stop the developer from making bad desicions, and nudge them in the right direction.
+## Quick Start
+```bash
+pip install -r requirements.txt
+python main.py
+```
 
-I'm not an opposer for "vide coding". Matter of fact, I'm basically going to "vibe" this entire project myself.
-But in the age of exponentially growing AI capabilities, I think it's important for for developers to learn things in the correct order.
-There are excellent tools at everyones disposal for boosting productivity but they can easily result in bad code if the developer does not have a good understanding of what good code is supposed to look like.
+## What It Does
+- Monitors your codebase for changes via file watchers
+- Maintains a local SQLite database of your code structure
+- Uses RAG (Retrieval-Augmented Generation) to analyze code changes
+- Provides contextual feedback on code quality and patterns
+- Acts as a code review mentor, not an autocomplete tool
 
-Ducky aims to bridge the gap between traditional coding and fully automatic coding IDEs by acting more like a mentor looking over your shoulder, telling you to take a step back and provide rubebrducking sessions when the developer gets stuck.
+## Key Features
+- **Local-first**: All data stays on your machine
+- **Real-time analysis**: Immediate feedback on code changes
+- **Context-aware**: Understands your entire codebase structure
+- **Educational focus**: Explains *why* something is problematic
+- **Non-intrusive**: Suggests improvements without writing code for you
 
-# "I see you're trying to learn more! Want me to tell how it works?"
+## Architecture Overview
+```
+File System Changes → File Watcher → SQLite Database → RAG Analysis → LLM Feedback
+```
 
-Ducky is what I decided to call the assitant. 
-He has a snapshot of your codebase in a SQLite database stored on your local machine.
-When you update your codebase the database gets updated, enabling Ducky to perform RAG tasks to help you imrpove your code.
-Large Language Models determines what the change was and if it needs to be commented on.
-If you start to write inconsistent, smelly or down right bad practices, Ducky will let you know and invite you to talk about it.
+## Use Cases
+- **Code review automation** for solo developers
+- **Learning tool** for junior developers
+- **Consistency enforcement** across large codebases
+- **Technical debt identification** in real-time
 
-Ducky won't (in this stage of development at least) write code for you.
-He is simply there to prove oversight and help you understand what you did wrong and how to improve it.
-I do not aim to make another autocomplete or code generator, I believe there are several tools that does this perfectly well already!
+## Technical Stack
+- File system monitoring
+- SQLite for local code indexing
+- RAG pipeline for contextual analysis
+- LLM integration for feedback generation
+
+---
+
+## Detailed Documentation
+
+### Problem Statement
+Modern AI coding tools excel at code generation but often lead to poor practices when developers don't understand the generated code. Ducky bridges this gap by focusing on education and code quality rather than code generation.
+
+### How It Works
+1. **File Monitoring**: Watches your project directory for changes
+2. **Code Indexing**: Maintains a searchable database of your codebase
+3. **Change Analysis**: Uses RAG to understand the context of your changes
+4. **Feedback Generation**: LLM analyzes changes against best practices
+5. **Developer Notification**: Provides actionable feedback and explanations
+
+### Development Status
+This is the development branch. Working features are merged to main after testing.
+
+### Philosophy
+Ducky doesn't write code for you - it teaches you to write better code. The goal is to maintain developer agency while providing expert-level guidance on code quality and patterns.
