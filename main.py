@@ -11,7 +11,7 @@ from src.ui.utils.user_interaction import get_dir_path
 from src.watcher.get_codebase import get_codebase
 from src.watcher.compare_versions import get_changes, FileChange
 from src.database.operations.post_changes import post_changes
-from src.ui.utils.notification_preferences import NOTIFICATION_TYPE_MAP
+from src.ui.utils.notification_preferences import NOTIFICATION_TYPE_MAP, NotificationPreference, get_notification_preference
 
 
 async def run_codebase_operations(root_path: str, api_key: str, notification_pref: NotificationPreference):
@@ -88,8 +88,8 @@ async def main():
         print("No API key provided. Exiting...")
         sys.exit(0)
     
-    # Get notification preference
-    notification_pref = await app.get_notification_pref()
+    # Get notification preference using the standalone function
+    notification_pref = await get_notification_preference(app.root)
     if not notification_pref:
         print("No notification preference selected. Exiting...")
         sys.exit(0)
