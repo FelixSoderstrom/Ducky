@@ -55,6 +55,7 @@ Modern AI coding tools excel at code generation but often lead to poor practices
 
 ### Development Status
 This is the development branch. Working features are merged to main after testing.
+To get a sneak peek of what coming around the corner, check out my [Miro Board](https://miro.com/app/board/uXjVIBdU1Lc=/)
 
 ### Philosophy
 Ducky doesn't write code for you - it teaches you to write better code. The goal is to maintain developer agency while providing expert-level guidance on code quality and patterns.
