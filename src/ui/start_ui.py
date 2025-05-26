@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 import os
+import asyncio
+import sys
 from typing import Optional
 
 
@@ -12,24 +14,33 @@ class DuckyUI:
         self.root = tk.Tk()
         self.root.title("Ducky")
         
+        # Set minimum size constants
+        self.MIN_WIDTH = 80
+        self.MIN_HEIGHT = 80
+        self.top_bar_height = 40
+        
         # Remove window decorations and set always on top
         self.root.overrideredirect(True)
         self.root.attributes('-topmost', True)
         
-        # Make the window background transparent
-        self.root.attributes('-transparentcolor', 'white')
+        # Make only the main content area transparent, not the top bar
+        self.root.attributes('-transparentcolor', '')  # Initially no transparency
         
-        # Set initial size and position
-        self.width = 200  # Starting larger than 20x20 for visibility
-        self.height = 200
-        self.top_bar_height = 40  # Height of the top bar
-        self.root.geometry(f"{self.width}x{self.height+self.top_bar_height}+100+100")
+        # Set initial size and position (width and height are for the image only)
+        self.width = max(200, self.MIN_WIDTH)
+        self.height = max(200, self.MIN_HEIGHT)
+        # Total window height includes top bar
+        total_height = self.height + self.top_bar_height
+        self.root.geometry(f"{self.width}x{total_height}+100+100")
         
         # Variables for dragging and resizing
         self.start_x = 0
         self.start_y = 0
         self.dragging = False
         self.resizing = False
+        
+        # For asyncio integration
+        self.running = True
         
         # Load and prepare the image
         self.original_image: Optional[Image.Image] = None
@@ -41,6 +52,9 @@ class DuckyUI:
         
         # Bind events for dragging and resizing
         self.bind_events()
+        
+        # Set transparency for the main content area only after UI is set up
+        self.root.attributes('-transparentcolor', 'white')
     
     def load_image(self) -> None:
         """Load the idle.png image from assets."""
@@ -62,18 +76,22 @@ class DuckyUI:
     def update_image_size(self) -> None:
         """Update the image size to fit the current window size while maintaining aspect ratio."""
         if self.original_image:
-            # Resize image to fill the window below the top bar
+            # Resize image to exactly match the specified dimensions
             resized_image = self.original_image.resize((self.width, self.height), Image.Resampling.LANCZOS)
             self.photo_image = ImageTk.PhotoImage(resized_image)
+            
+            # Update the image container size
+            if hasattr(self, 'image_container'):
+                self.image_container.configure(width=self.width, height=self.height)
             
             # Update the label if it exists
             if hasattr(self, 'image_label'):
                 self.image_label.configure(image=self.photo_image)
-                
+            
             # Update the top bar size
             if hasattr(self, 'top_bar'):
                 self.top_bar.configure(width=self.width)
-                
+            
             # Update control sizes
             control_size = min(30, self.top_bar_height - 10)  # Leave some padding
             if hasattr(self, 'resize_handle'):
@@ -84,10 +102,10 @@ class DuckyUI:
     def setup_ui(self) -> None:
         """Create the UI elements."""
         # Main frame with transparent background
-        self.main_frame = tk.Frame(self.root, bg='white')
+        self.main_frame = tk.Frame(self.root)
         self.main_frame.pack(fill='both', expand=True)
         
-        # Top bar
+        # Top bar with solid background
         self.top_bar = tk.Frame(
             self.main_frame,
             bg='#2c2c2c',  # Dark background for the top bar
@@ -96,81 +114,119 @@ class DuckyUI:
         self.top_bar.pack(fill='x', side='top')
         self.top_bar.pack_propagate(False)  # Maintain height
         
+        # Container for controls to ensure proper spacing
+        control_size = min(30, self.top_bar_height - 10)
+        
         # Resize handle in top bar (left side)
+        resize_container = tk.Frame(
+            self.top_bar,
+            bg='#2c2c2c',
+            width=control_size,  # Set explicit width
+            height=self.top_bar_height
+        )
+        resize_container.pack(side='left', padx=(5, 0))  # Reduced left padding
+        resize_container.pack_propagate(False)  # Maintain size
+        
         self.resize_handle = tk.Label(
-            self.top_bar,
+            resize_container,
             text="⋰",
-            font=("Arial", 24),
+            font=("Arial", control_size),
             fg="white",
             bg='#2c2c2c',
-            cursor="size_nw_se"
+            cursor="size_nw_se",
+            width=1  # Reduced width
         )
-        self.resize_handle.pack(side='left', padx=10)
+        self.resize_handle.place(relx=0.5, rely=0.5, anchor='center')  # Center in container
         
-        # Exit button (X) in top bar (right side)
-        self.exit_button = tk.Button(
+        # Exit button container frame (right side)
+        exit_container = tk.Frame(
             self.top_bar,
+            bg='#2c2c2c',
+            borderwidth=0,
+            highlightthickness=0,
+            width=control_size,  # Set explicit width
+            height=self.top_bar_height
+        )
+        exit_container.pack(side='right', padx=(0, 5))  # Reduced right padding
+        exit_container.pack_propagate(False)  # Maintain size
+        
+        # Exit button (X) - completely opaque
+        self.exit_button = tk.Label(
+            exit_container,
             text="×",
-            font=("Arial", 24, "bold"),
+            font=("Arial", control_size, "bold"),
             fg="white",
             bg='#2c2c2c',
-            relief="flat",
-            command=self.close_app,
-            borderwidth=0,
-            activebackground='#e81123',  # Red highlight on hover
-            activeforeground='white'
+            width=1,  # Reduced width
+            cursor="hand2"  # Show pointer cursor on hover
         )
-        self.exit_button.pack(side='right', padx=10)
+        self.exit_button.place(relx=0.5, rely=0.5, anchor='center')  # Center in container
         
-        # Image container
+        # Bind click events for the exit button
+        self.exit_button.bind('<Button-1>', lambda e: self.close_app())
+        self.exit_button.bind('<Enter>', lambda e: self.exit_button.configure(fg='#e81123'))  # Red on hover
+        self.exit_button.bind('<Leave>', lambda e: self.exit_button.configure(fg='white'))    # White when not hovering
+        
+        # Image container (with transparent background)
         self.image_container = tk.Frame(
             self.main_frame,
-            bg='white'
+            bg='white',  # This will be transparent
+            width=self.width,
+            height=self.height  # Exact image height
         )
-        self.image_container.pack(fill='both', expand=True)
+        self.image_container.pack(fill='both', expand=False)
+        self.image_container.pack_propagate(False)  # Maintain exact size
         
         # Image label
-        self.image_label = tk.Label(self.image_container, bg='white')
+        self.image_label = tk.Label(
+            self.image_container,
+            bg='white',  # This will be transparent
+            borderwidth=0,
+            highlightthickness=0
+        )
         if self.photo_image:
             self.image_label.configure(image=self.photo_image)
-        self.image_label.pack(fill='both', expand=True)
+        self.image_label.place(x=0, y=0, relwidth=1, relheight=1)  # Fill container exactly
     
     def bind_events(self) -> None:
         """Bind mouse events for dragging and resizing."""
-        # Dragging events (on main frame and image)
-        self.main_frame.bind("<Button-1>", self.start_drag)
-        self.main_frame.bind("<B1-Motion>", self.on_drag)
-        self.main_frame.bind("<ButtonRelease-1>", self.stop_drag)
-        
-        self.image_label.bind("<Button-1>", self.start_drag)
-        self.image_label.bind("<B1-Motion>", self.on_drag)
-        self.image_label.bind("<ButtonRelease-1>", self.stop_drag)
+        # Dragging events (on top bar and image)
+        for widget in (self.top_bar, self.image_label):
+            widget.bind("<Button-1>", self.start_drag)
+            widget.bind("<B1-Motion>", self.on_drag)
+            widget.bind("<ButtonRelease-1>", self.stop_drag)
         
         # Resizing events (on resize handle)
         self.resize_handle.bind("<Button-1>", self.start_resize)
         self.resize_handle.bind("<B1-Motion>", self.on_resize)
         self.resize_handle.bind("<ButtonRelease-1>", self.stop_resize)
+        
+        # Make sure the image label shows a normal cursor
+        self.image_label.configure(cursor="arrow")
     
     def start_drag(self, event) -> None:
         """Start dragging the window."""
-        if not self.resizing and event.widget != self.resize_handle:
+        if not self.resizing and event.widget != self.resize_handle and event.widget != self.exit_button:
             self.dragging = True
             self.start_x = event.x_root
             self.start_y = event.y_root
+            # Store the initial window position
+            self.drag_start_x = self.root.winfo_x()
+            self.drag_start_y = self.root.winfo_y()
     
     def on_drag(self, event) -> None:
         """Handle window dragging."""
         if self.dragging and not self.resizing:
+            # Calculate the change in position
             dx = event.x_root - self.start_x
             dy = event.y_root - self.start_y
             
-            x = self.root.winfo_x() + dx
-            y = self.root.winfo_y() + dy
+            # Update window position
+            new_x = self.drag_start_x + dx
+            new_y = self.drag_start_y + dy
             
-            self.root.geometry(f"{self.width}x{self.height}+{x}+{y}")
-            
-            self.start_x = event.x_root
-            self.start_y = event.y_root
+            # Move the window without changing its size
+            self.root.geometry(f"{self.width}x{self.height + self.top_bar_height}+{new_x}+{new_y}")
     
     def stop_drag(self, event) -> None:
         """Stop dragging the window."""
@@ -189,13 +245,13 @@ class DuckyUI:
             dx = self.start_x - event.x_root
             dy = self.start_y - event.y_root
             
-            # Use the larger of the dimensions to maintain square aspect ratio
+            # Use the larger of the dimensions to maintain square aspect ratio for the image only
             delta = max(dx, dy)
             
-            # Calculate new size (minimum 60x60 pixels to accommodate controls)
-            new_size = max(60, self.width + delta)
+            # Calculate new size (respecting minimum size)
+            new_size = max(self.MIN_WIDTH, self.width + delta)
             
-            # Update window size (maintaining square aspect ratio)
+            # Update image dimensions (maintaining square aspect ratio)
             self.width = new_size
             self.height = new_size
             
@@ -203,8 +259,11 @@ class DuckyUI:
             x = self.root.winfo_x() - delta
             y = self.root.winfo_y() - delta
             
-            # Apply new geometry (including top bar height)
-            self.root.geometry(f"{new_size}x{new_size + self.top_bar_height}+{x}+{y}")
+            # Total height includes top bar
+            total_height = self.height + self.top_bar_height
+            
+            # Apply new geometry
+            self.root.geometry(f"{new_size}x{total_height}+{x}+{y}")
             
             # Update image and control sizes
             self.update_image_size()
@@ -218,16 +277,26 @@ class DuckyUI:
         self.resizing = False
     
     def close_app(self) -> None:
-        """Close the application."""
+        """Close the application and exit the program."""
+        self.running = False
         self.root.quit()
         self.root.destroy()
+        sys.exit(0)  # Exit the entire program
     
-    def run(self) -> None:
-        """Start the UI main loop."""
-        self.root.mainloop()
+    async def update(self) -> None:
+        """Update the UI asynchronously."""
+        try:
+            while self.running:
+                self.root.update()
+                await asyncio.sleep(0.01)  # Small sleep to prevent CPU hogging
+        except tk.TclError:  # Handle case when window is closed directly
+            sys.exit(0)
 
-
-def start_ui() -> None:
-    """Start the Ducky UI application."""
+async def start_ui() -> DuckyUI:
+    """Start the Ducky UI application asynchronously.
+    
+    Returns:
+        DuckyUI: The initialized UI instance.
+    """
     app = DuckyUI()
-    app.run()
+    return app
