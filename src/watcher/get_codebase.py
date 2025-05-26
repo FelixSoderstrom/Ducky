@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 import os
 from datetime import datetime
 from pathlib import Path
@@ -45,28 +45,35 @@ def should_ignore(path: str, ignore_patterns: list[str]) -> bool:
             return True
     return False
 
-def get_codebase(root_path: str) -> Dict[str, Dict[str, Any]]:
+def get_codebase(root_path: str, api_key: str = None) -> Dict[str, Any]:
     """
     Recursively scan directory and return dict with file information.
     
     Args:
         root_path: Root directory path to scan
+        api_key: Optional API key to include in the response
         
     Returns:
-        Dict containing file information with structure:
+        Dict containing project and file information with structure:
         {
-            filename: {
-                last_edit: timestamp,
-                file_contents: str,
-                full_path: str,
-                is_dir: bool
-            }
+            project_name: str,
+            api_key: str,
+            files: [
+                {
+                    filename: str,
+                    last_edit: timestamp,
+                    file_contents: str,
+                    full_path: str,
+                    is_dir: bool
+                },
+                ...
+            ]
         }
     """
-    codebase = {}
+    files = []
     ignore_patterns = read_gitignore(root_path)
     
-    for root, dirs, files in os.walk(root_path):
+    for root, dirs, filenames in os.walk(root_path):
         # Convert absolute path to relative path
         rel_root = os.path.relpath(root, root_path)
         if rel_root == '.':
@@ -80,15 +87,16 @@ def get_codebase(root_path: str) -> Dict[str, Dict[str, Any]]:
             full_path = os.path.join(root, dir_name)
             rel_path = os.path.join(rel_root, dir_name).replace('\\', '/')
             
-            codebase[rel_path] = {
+            files.append({
+                'filename': dir_name,
                 'last_edit': datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat(),
                 'file_contents': None,
                 'full_path': full_path,
                 'is_dir': True
-            }
+            })
         
         # Process files
-        for file_name in files:
+        for file_name in filenames:
             rel_path = os.path.join(rel_root, file_name).replace('\\', '/')
             if should_ignore(rel_path, ignore_patterns):
                 continue
@@ -101,11 +109,16 @@ def get_codebase(root_path: str) -> Dict[str, Dict[str, Any]]:
                 # Skip binary files or files we can't read
                 continue
                 
-            codebase[rel_path] = {
+            files.append({
+                'filename': file_name,
                 'last_edit': datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat(),
                 'file_contents': content,
                 'full_path': full_path,
                 'is_dir': False
-            }
+            })
     
-    return codebase
+    return {
+        'project_name': os.path.basename(os.path.abspath(root_path)),
+        'api_key': api_key,
+        'files': files
+    }
