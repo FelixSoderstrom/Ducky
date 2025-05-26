@@ -4,8 +4,75 @@ from PIL import Image, ImageTk
 import os
 import asyncio
 import sys
-from typing import Optional
+from typing import Optional, Tuple
 
+class APIKeyDialog:
+    """Dialog window for collecting the Anthropic API key."""
+    
+    def __init__(self, parent):
+        self.api_key = None
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("API Key Required")
+        
+        # Make dialog modal
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        # Center the dialog
+        window_width = 400
+        window_height = 150
+        screen_width = parent.winfo_screenwidth()
+        screen_height = parent.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.dialog.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        
+        # Add widgets
+        label = ttk.Label(
+            self.dialog,
+            text="Please enter your Anthropic API key:",
+            wraplength=350,
+            justify="center",
+            padding=(10, 10)
+        )
+        label.pack(pady=10)
+        
+        self.entry = ttk.Entry(self.dialog, width=40, show="*")
+        self.entry.pack(pady=10)
+        
+        button_frame = ttk.Frame(self.dialog)
+        button_frame.pack(pady=10)
+        
+        ttk.Button(
+            button_frame,
+            text="Submit",
+            command=self.submit
+        ).pack(side="left", padx=5)
+        
+        ttk.Button(
+            button_frame,
+            text="Cancel",
+            command=self.cancel
+        ).pack(side="left", padx=5)
+        
+        # Bind Enter key to submit
+        self.dialog.bind("<Return>", lambda e: self.submit())
+        self.dialog.bind("<Escape>", lambda e: self.cancel())
+        
+        # Focus the entry widget
+        self.entry.focus_set()
+        
+        # Wait for dialog to close
+        parent.wait_window(self.dialog)
+    
+    def submit(self) -> None:
+        """Submit the API key and close the dialog."""
+        self.api_key = self.entry.get().strip()
+        self.dialog.destroy()
+    
+    def cancel(self) -> None:
+        """Cancel the operation and close the dialog."""
+        self.dialog.destroy()
 
 class DuckyUI:
     """A resizable UI window that displays the idle.png image with custom controls."""
@@ -13,6 +80,9 @@ class DuckyUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Ducky")
+        
+        # Initialize API key
+        self.api_key: Optional[str] = None
         
         # Set minimum size constants
         self.MIN_WIDTH = 80
@@ -291,6 +361,16 @@ class DuckyUI:
                 await asyncio.sleep(0.01)  # Small sleep to prevent CPU hogging
         except tk.TclError:  # Handle case when window is closed directly
             sys.exit(0)
+
+    async def get_api_key(self) -> Optional[str]:
+        """Show API key dialog and return the entered key.
+        
+        Returns:
+            Optional[str]: The API key if provided, None if cancelled.
+        """
+        dialog = APIKeyDialog(self.root)
+        self.api_key = dialog.api_key
+        return self.api_key
 
 async def start_ui() -> DuckyUI:
     """Start the Ducky UI application asynchronously.

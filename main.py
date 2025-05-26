@@ -6,13 +6,14 @@ from src.ui.utils.user_interaction import get_dir_path
 from src.watcher.get_codebase import get_codebase
 
 
-async def run_codebase_operations(root_path: str):
+async def run_codebase_operations(root_path: str, api_key: str):
     """Run initial codebase scan.
     
     Args:
-        root_path: The directory path to scan.
+        root_path: The directory path to scan
+        api_key: The Anthropic API key to include in the codebase dict
     """
-    codebase = get_codebase(root_path)
+    codebase = get_codebase(root_path, api_key)
     print("Initial codebase scan:")
     print(codebase)
 
@@ -31,9 +32,15 @@ async def main():
         print("No directory selected. Exiting...")
         sys.exit(0)
     
+    # Get Anthropic API key
+    api_key = await app.get_api_key()
+    if not api_key:
+        print("No API key provided. Exiting...")
+        sys.exit(0)
+    
     # Run the codebase scan
     try:
-        await run_codebase_operations(root_path)
+        await run_codebase_operations(root_path, api_key)
         # Continue running the UI after scan
         await app.update()
     except KeyboardInterrupt:
