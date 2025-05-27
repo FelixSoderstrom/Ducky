@@ -1,0 +1,100 @@
+from typing import Optional
+from src.database.models.projects import Project
+from src.database.operations.get_project import get_project_by_path
+from src.database.operations.post_project import post_project
+from src.database.operations.post_changes import post_changes
+from src.database.session import get_db
+from src.watcher.get_codebase import get_codebase
+from src.watcher.compare_versions import get_changes, FileChange
+from src.ui.utils.notification_preferences import NotificationPreference, NOTIFICATION_TYPE_MAP
+import sys
+from typing import List
+from sqlalchemy.orm import Session
+import sqlalchemy.orm
+
+
+def check_existing_project(root_path: str) -> Optional[Project]:
+    """Check if a project already exists in the database.
+    
+    Args:
+        root_path: Path to the project directory
+        
+    Returns:
+        Project if it exists, None otherwise
+        
+    Raises:
+        Exception: If there's an error accessing the database
+    """
+    try:
+        with get_db() as session:
+            return get_project_by_path(session, root_path)
+    except Exception as e:
+        print(f"Error checking for existing project: {str(e)}")
+        sys.exit(1)
+
+
+def get_project_with_files(session: Session, project_id: int) -> Project:
+    """Get a project with its files eagerly loaded.
+    
+    Args:
+        session: SQLAlchemy session
+        project_id: ID of the project to fetch
+        
+    Returns:
+        Project instance with files relationship loaded
+    """
+    # Query the project with files relationship eagerly loaded
+    return session.query(Project).options(
+        sqlalchemy.orm.joinedload(Project.files)
+    ).get(project_id)
+
+
+async def handle_existing_project(project: Project, root_path: str) -> None:
+    """Handle operations for an existing project.
+    
+    Args:
+        project: The existing Project instance from the database
+        root_path: Path to the local project directory
+    """
+    print(f"Project '{project.name}' already exists in database")
+    
+    with get_db() as session:
+        # Get a fresh project instance with files loaded
+        project_with_files = get_project_with_files(session, project.id)
+        
+        # Get changes between database and local versions
+        changes: List[FileChange] = get_changes(project_with_files, root_path)
+        
+        # Add project_id to each change
+        for change in changes:
+            change['project_id'] = project.id
+        
+        # Post changes to database (in the same session)
+        post_changes(session, changes)
+    
+    print(f"Found {len(changes)} changed files")
+    print(changes)
+
+
+async def initialize_new_project(root_path: str, api_key: str, notification_pref: NotificationPreference) -> None:
+    """Initialize a new project in the database.
+    
+    Args:
+        root_path: The directory path to scan
+        api_key: The Anthropic API key to include in the codebase dict
+        notification_pref: User's preferred notification method
+    """
+    codebase = get_codebase(root_path, api_key)
+    # Add project path and notification preference to codebase dict
+    codebase['project_path'] = root_path
+    codebase['notification_preference'] = NOTIFICATION_TYPE_MAP[notification_pref]
+    print("Initial codebase scan:")
+    print(codebase)
+    
+    # Post to database
+    try:
+        with get_db() as session:
+            post_project(session, codebase)
+    except Exception as e:
+        print(f"Failed to post project to database: {str(e)}")
+        sys.exit(1) 

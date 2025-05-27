@@ -14,6 +14,7 @@ class FileChange(TypedDict):
     last_edit: str
     is_dir: bool
     is_new_file: bool
+    project_id: int
 
 
 def get_changes(project_db: Project, root_path: str) -> List[FileChange]:
@@ -44,18 +45,29 @@ def get_changes(project_db: Project, root_path: str) -> List[FileChange]:
         db_file = db_files.get(normalized_path)
         is_new = db_file is None
         
+        # Skip directory comparisons unless it's a new directory
+        if file_data['is_dir'] and not is_new:
+            continue
+            
+        # For files, compare content. For directories, only track new ones
+        old_version = '' if is_new else (db_file.content or '')
+        new_version = file_data['file_contents'] or ''  # Convert None to '' for comparison
+        
         change: FileChange = {
             'filename': file_data['filename'],
             'path': normalized_path,
-            'old_version': '' if is_new else db_file.content or '',
-            'new_version': file_data['file_contents'],
+            'old_version': old_version,
+            'new_version': new_version,
             'last_edit': file_data['last_edit'],
             'is_dir': file_data['is_dir'],
-            'is_new_file': is_new
+            'is_new_file': is_new,
+            'project_id': project_db.id
         }
         
-        # Only add to changes if file is new or content has changed
-        if is_new or change['old_version'] != change['new_version']:
+        # Only add to changes if:
+        # 1. It's a new file/directory
+        # 2. It's a file (not directory) and content has changed
+        if is_new or (not file_data['is_dir'] and old_version != new_version):
             changes.append(change)
             
     # Check for files that exist in DB but not locally (deleted files)
@@ -68,7 +80,8 @@ def get_changes(project_db: Project, root_path: str) -> List[FileChange]:
                 'new_version': '',  # Empty content indicates deletion
                 'last_edit': datetime.now().isoformat(),
                 'is_dir': db_file.is_dir,
-                'is_new_file': False
+                'is_new_file': False,
+                'project_id': project_db.id
             })
     
     return changes

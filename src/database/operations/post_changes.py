@@ -33,8 +33,9 @@ def post_changes(session: Session, changes: List[FileChange]) -> None:
                     file.content = change['new_version']
                     file.last_edit = datetime.fromisoformat(change['last_edit'])
                 else:
-                    # Create new file
+                    # Create new file with project_id from change
                     file = File(
+                        project_id=change['project_id'],
                         path=change['path'],
                         name=change['filename'],
                         is_dir=change['is_dir'],
