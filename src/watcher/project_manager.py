@@ -76,6 +76,25 @@ async def handle_existing_project(project: Project, root_path: str) -> None:
     print(changes)
 
 
+def update_database_with_changes(changes: List[FileChange]) -> None:
+    """Update the database with pre-detected changes.
+    
+    Args:
+        changes: List of FileChange objects to update in the database
+    """
+    if not changes:
+        print("No changes to update in database")
+        return
+        
+    try:
+        with get_db() as session:
+            post_changes(session, changes)
+        print(f"Successfully updated database with {len(changes)} changes")
+    except Exception as e:
+        print(f"Error updating database with changes: {str(e)}")
+        raise
+
+
 async def initialize_new_project(root_path: str, api_key: str, notification_pref: NotificationPreference) -> None:
     """Initialize a new project in the database.
     

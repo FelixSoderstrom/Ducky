@@ -4,7 +4,7 @@ from src.database.init_db import init_db
 from src.ui.start_ui import start_ui
 from src.ui.utils.user_interaction import get_dir_path
 from src.ui.utils.notification_preferences import get_notification_preference
-from src.watcher.project_manager import check_existing_project, handle_existing_project, initialize_new_project
+from src.watcher.project_manager import check_existing_project, handle_existing_project, initialize_new_project, update_database_with_changes
 from src.database.session import get_db
 from src.watcher.compare_versions import get_changes
 from src.code_review.utils.pipeline import code_review_pipeline
@@ -43,12 +43,24 @@ async def scan_for_changes(root_path: str, project_id: int, app) -> None:
                 
                 if changes:
                     print(f"Found {len(changes)} changes. Running code review...")
-                    code_review_pipeline(changes)
                     
-                    # Update database with new changes
+                    # Ensure all changes have project_id set
                     for change in changes:
                         change['project_id'] = project_id
-                    await handle_existing_project(project, root_path)
+                    
+                    try:
+                        # Run the code review pipeline
+                        code_review_pipeline(changes, project_id)
+                        print("Code review pipeline completed.")
+                    except Exception as e:
+                        print(f"Code review pipeline error: {str(e)}")
+                        print("Pipeline completed with error, proceeding to update database.")
+                    finally:
+                        # Always update database after pipeline runs (success or failure)
+                        # This ensures the database stays in sync with the filesystem
+                        update_database_with_changes(changes)
+                else:
+                    print("No changes detected.")
                 
         except Exception as e:
             print(f"Error during scan: {str(e)}")
@@ -93,7 +105,7 @@ async def main():
             if app.running:
                 app.close_app()
         return
-        
+
     # Handle new project initialization
     api_key = await app.get_api_key()
     if not api_key:
