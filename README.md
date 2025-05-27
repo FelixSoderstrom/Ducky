@@ -54,7 +54,9 @@ Modern AI coding tools excel at code generation but often lead to poor practices
 5. **Developer Notification**: Provides actionable feedback and explanations
 
 ### Development Status
-This is the development branch. Working features are merged to main after testing.
+Development is taking place on the dev branch.
+Working features are merged to this branch (main) after testing.
+I never recommend cloning the dev branch and will never promise working versions on the dev branch.
 To get a sneak peek of what coming around the corner, check out my [Miro Board](https://miro.com/app/board/uXjVIBdU1Lc=/)
 
 ### Philosophy
