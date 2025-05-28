@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -9,6 +10,9 @@ from src.database.models.files import File
 from src.database.models.configs import Config
 from src.database.models.notification_types import NotificationType
 from src.database.utils.path_utils import normalize_path
+
+# Create logger for this module
+logger = logging.getLogger("ducky.database.operations.post_project")
 
 def post_project(session: Session, codebase: Dict[str, Any]) -> None:
     """Post initial project scan to database.
@@ -71,13 +75,13 @@ def post_project(session: Session, codebase: Dict[str, Any]) -> None:
             session.add(file)
         
         session.commit()
-        print(f"Successfully added project {project.name} to database")
+        logger.info(f"Successfully added project {project.name} to database")
         
     except IntegrityError as e:
         session.rollback()
-        print(f"Error: Project with API key {codebase['api_key']} already exists")
+        logger.error(f"Error: Project with API key {codebase['api_key']} already exists")
         raise
     except Exception as e:
         session.rollback()
-        print(f"Error adding project to database: {str(e)}")
+        logger.error(f"Error adding project to database: {str(e)}")
         raise 

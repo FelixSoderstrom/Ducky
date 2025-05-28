@@ -40,7 +40,10 @@ def setup_logging(log_level: str = "INFO"):
     error_handler = logging.getLogger().handlers[-1]
     error_handler.setLevel(logging.ERROR)
     
-    # Reduce SQLAlchemy verbosity
+    # Reduce SQLAlchemy verbosity (set after basicConfig)
+    logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
     
     logging.info(f"Logging initialized - Level: {log_level}") 

@@ -1,9 +1,13 @@
 from datetime import datetime
+import logging
 from typing import List, Dict, Any, TypedDict, Optional
 from src.database.models.projects import Project
 from src.database.models.files import File
 from src.watcher.get_codebase import get_codebase_metadata, read_file_content
 from src.database.utils.path_utils import normalize_path
+
+# Create logger for this module
+logger = logging.getLogger("ducky.watcher.compare_versions")
 
 
 class FileChange(TypedDict):
@@ -31,7 +35,7 @@ def get_changes(project_db: Project, root_path: str, last_scan_timestamp: Option
     # If no last scan timestamp, skip the scan to avoid processing thousands of files
     # The regular scanning loop will detect actual changes efficiently
     if last_scan_timestamp is None:
-        print("Skipping initial scan - regular monitoring will detect changes")
+        logger.info("Skipping initial scan - regular monitoring will detect changes")
         return []
     
     # Get local codebase metadata scan (more efficient - no file content reading)

@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 from typing import List
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -7,6 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from src.database.models.files import File
 from src.watcher.compare_versions import FileChange
 
+# Create logger for this module
+logger = logging.getLogger("ducky.database.operations.post_changes")
 
 def post_changes(session: Session, changes: List[FileChange]) -> None:
     """Update the database with file changes from the local codebase.
@@ -46,13 +49,13 @@ def post_changes(session: Session, changes: List[FileChange]) -> None:
         
         # Commit all changes
         session.commit()
-        print("Successfully updated database with file changes")
+        logger.info("Successfully updated database with file changes")
         
     except IntegrityError as e:
         session.rollback()
-        print(f"Database integrity error: {str(e)}")
+        logger.error(f"Database integrity error: {str(e)}")
         raise
     except Exception as e:
         session.rollback()
-        print(f"Error updating database with changes: {str(e)}")
+        logger.error(f"Error updating database with changes: {str(e)}")
         raise

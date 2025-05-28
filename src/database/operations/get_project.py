@@ -1,9 +1,13 @@
+import logging
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from src.database.models.projects import Project
 from src.database.utils.path_utils import normalize_path
+
+# Create logger for this module
+logger = logging.getLogger("ducky.database.operations.get_project")
 
 def get_project_by_path(session: Session, project_path: str) -> Optional[Project]:
     """Check if a project exists in the database by its path.
@@ -27,5 +31,5 @@ def get_project_by_path(session: Session, project_path: str) -> Optional[Project
         return project
     
     except Exception as e:
-        print(f"Error querying database: {str(e)}")
+        logger.error(f"Error querying database: {str(e)}")
         raise 

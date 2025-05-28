@@ -5,6 +5,11 @@ import os
 import asyncio
 import sys
 from typing import Optional, Tuple
+import logging
+import pathlib
+
+# Create logger for this module
+logger = logging.getLogger("ducky.ui")
 
 class APIKeyDialog:
     """Dialog window for collecting the Anthropic API key."""
@@ -138,7 +143,7 @@ class DuckyUI:
             self.update_image_size()
             
         except Exception as e:
-            print(f"Error loading image: {e}")
+            logger.warning(f"Error loading image: {e}")
             # Create a transparent placeholder if image fails to load
             self.original_image = Image.new('RGBA', (100, 100), (0, 0, 0, 0))
             self.update_image_size()

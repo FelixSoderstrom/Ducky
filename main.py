@@ -22,11 +22,8 @@ from src.database.models.projects import Project
 # Create logger for main module
 logger = logging.getLogger("ducky.main")
 
-# Configurable scan interval in seconds (can be integrated into UI later)
-# This interval balances responsiveness with system resource usage.
-# Shorter intervals = more responsive but higher CPU usage
-# Longer intervals = less CPU usage but slower change detection
-SCAN_INTERVAL_SECONDS = 30
+
+SCAN_INTERVAL_SECONDS = 10
 
 async def scan_for_changes(root_path: str, project_id: int, app) -> None:
     """Continuously scan for changes in the codebase using timestamp-based comparison.
