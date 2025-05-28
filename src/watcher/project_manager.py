@@ -57,23 +57,13 @@ async def handle_existing_project(project: Project, root_path: str) -> None:
         root_path: Path to the local project directory
     """
     print(f"Project '{project.name}' already exists in database")
+    print("Existing project detected - the scanning loop will detect and process any new changes.")
     
-    with get_db() as session:
-        # Get a fresh project instance with files loaded
-        project_with_files = get_project_with_files(session, project.id)
-        
-        # Get changes between database and local versions
-        changes: List[FileChange] = get_changes(project_with_files, root_path)
-        
-        # Add project_id to each change
-        for change in changes:
-            change['project_id'] = project.id
-        
-        # Post changes to database (in the same session)
-        post_changes(session, changes)
+    # For existing projects, we don't need to do a full sync here since the 
+    # regular scanning loop will handle detecting and processing changes efficiently.
+    # This prevents the performance issue of processing thousands of files on startup.
     
-    print(f"Found {len(changes)} changed files")
-    print(changes)
+    print("Ready to monitor for changes...")
 
 
 def update_database_with_changes(changes: List[FileChange]) -> None:

@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from datetime import datetime
 from src.database.init_db import init_db
 from src.ui.start_ui import start_ui
 from src.ui.utils.user_interaction import get_dir_path
@@ -12,17 +13,26 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 from src.database.models.projects import Project
 
+# Configurable scan interval in seconds (can be integrated into UI later)
+# This interval balances responsiveness with system resource usage.
+# Shorter intervals = more responsive but higher CPU usage
+# Longer intervals = less CPU usage but slower change detection
+SCAN_INTERVAL_SECONDS = 30
 
 async def scan_for_changes(root_path: str, project_id: int, app) -> None:
-    """Continuously scan for changes in the codebase.
+    """Continuously scan for changes in the codebase using timestamp-based comparison.
     
     Args:
         root_path: Path to the project directory
         project_id: ID of the project in the database
         app: The UI application instance to check running state
     """
+    last_scan_timestamp = None  # Track when we last scanned
+    
     while app.running:
         try:
+            current_scan_time = datetime.now()
+            
             with get_db() as session:
                 # Get fresh project instance with files eagerly loaded using 2.0 style
                 stmt = (
@@ -38,8 +48,8 @@ async def scan_for_changes(root_path: str, project_id: int, app) -> None:
                     app.close_app()
                     return
                     
-                # Get changes between database and local versions
-                changes = get_changes(project, root_path)
+                # Get changes between database and local versions using timestamp comparison
+                changes = get_changes(project, root_path, last_scan_timestamp)
                 
                 if changes:
                     print(f"Found {len(changes)} changes. Running code review...")
@@ -62,14 +72,17 @@ async def scan_for_changes(root_path: str, project_id: int, app) -> None:
                 else:
                     print("No changes detected.")
                 
+                # Update last scan timestamp after successful scan
+                last_scan_timestamp = current_scan_time
+                
         except Exception as e:
             print(f"Error during scan: {str(e)}")
             if not app.running:
                 return
             
-        # Sleep for 10 seconds before next scan
+        # Sleep for configured interval before next scan
         try:
-            await asyncio.sleep(10)
+            await asyncio.sleep(SCAN_INTERVAL_SECONDS)
         except asyncio.CancelledError:
             return
 
