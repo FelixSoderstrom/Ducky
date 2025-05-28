@@ -4,8 +4,9 @@ import logging
 from datetime import datetime
 
 # Initialize logging first before other imports
-from src.utils.logging_config import setup_logging
+from src.utils.logging_config import setup_logging, setup_code_review_logger
 setup_logging(log_level="INFO")
+setup_code_review_logger()  # Initialize code review logger
 
 from src.database.init_db import init_db
 from src.ui.start_ui import start_ui
@@ -59,10 +60,6 @@ async def scan_for_changes(root_path: str, project_id: int, app) -> None:
                 
                 if changes:
                     logger.info(f"Found {len(changes)} changes. Running code review...")
-                    
-                    # Ensure all changes have project_id set
-                    for change in changes:
-                        change['project_id'] = project_id
                     
                     try:
                         # Run the code review pipeline

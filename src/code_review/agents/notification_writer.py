@@ -28,7 +28,7 @@ class NotificationWriter(CodeReviewAgent):
         
         if not context.current_warning:
             self.logger.warning("No warning message to convert to notification")
-            return PipelineResult.CONTINUE, "Hey! I noticed some changes in your code that might need attention. Let's chat about it! 🦆"
+            return PipelineResult.CONTINUE, "Hey! I noticed some changes in your code that might need attention. Let's chat about it!"
         
         try:
             # Generate friendly notification using LLM
@@ -38,7 +38,7 @@ class NotificationWriter(CodeReviewAgent):
         except Exception as e:
             self.logger.error(f"Notification writing failed: {str(e)}")
             # Fallback to basic notification
-            return PipelineResult.CONTINUE, "Hey! I noticed something interesting in your recent code changes. Want to chat about it? I've got some helpful insights to share! 🦆"
+            return PipelineResult.CONTINUE, "Hey! I noticed something interesting in your recent code changes. Want to chat about it? I have some helpful insights to share!"
     
     def _generate_friendly_notification(self, warning: WarningMessage) -> str:
         """Use LLM to generate a friendly, engaging notification."""
@@ -61,7 +61,6 @@ Please convert this technical warning into a friendly, encouraging notification 
 3. Creates curiosity rather than alarm
 4. Maintains Ducky's educational and helpful personality
 5. Ends with an invitation to learn more
-6. Includes the duck emoji 🦆
 
 Keep it concise (1-2 sentences) but engaging. The goal is to encourage the user to want to learn more about the issue rather than feeling overwhelmed."""
                 }
@@ -76,10 +75,6 @@ Keep it concise (1-2 sentences) but engaging. The goal is to encourage the user 
             
             notification = response.content[0].text.strip()
             
-            # Ensure the notification ends with duck emoji if not already present
-            if "🦆" not in notification:
-                notification += " 🦆"
-            
             self.logger.info(f"Generated notification: {notification[:100]}...")
             return notification
             
@@ -87,9 +82,9 @@ Keep it concise (1-2 sentences) but engaging. The goal is to encourage the user 
             self.logger.error(f"LLM call failed in notification writing: {e}")
             # Fallback based on severity
             if warning.severity in ["high", "critical"]:
-                return "Hey! I found something important in your code that could use some attention. Let's take a look together! 🦆"
+                return "Hey! I found something important in your code that could use some attention. Let's take a look together!"
             else:
-                return "Hi there! I noticed something interesting in your recent changes. Want to chat about some potential improvements? 🦆"
+                return "Hi there! I noticed something interesting in your recent changes. Want to chat about some potential improvements?"
     
     def _build_system_prompt(self) -> str:
         """Build the system prompt from the JSON configuration."""

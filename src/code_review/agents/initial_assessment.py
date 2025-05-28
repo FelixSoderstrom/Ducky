@@ -19,27 +19,39 @@ class InitialAssessment(CodeReviewAgent):
         Can cancel pipeline for minor changes like comments, formatting, etc.
         """
         self.logger.info("Starting initial assessment")
+        self.cr_logger.info(f"[{self.name}] Analyzing code changes...")
         
         # Check for trivial changes that should cancel pipeline
         if self._is_trivial_change(context.old_version, context.new_version):
             self.logger.info("Trivial change detected, cancelling pipeline")
+            self.cr_logger.info(f"[{self.name}] Trivial change detected - cancelling pipeline")
+            self.cr_logger.info(f"[{self.name}] Decision: CANCEL (No significant functional changes)")
             return PipelineResult.CANCEL, None
         
         try:
             # Call LLM with system prompt
+            self.cr_logger.info(f"[{self.name}] Calling LLM for analysis...")
             response = self._call_llm(context)
+            self._log_llm_output(self.name, response)
             
             # Parse response and create warning message
             warning = self._parse_response(response, context)
             
             if warning is None:
                 self.logger.info("No issues found, cancelling pipeline")
+                self.cr_logger.info(f"[{self.name}] No issues found - cancelling pipeline")
+                self.cr_logger.info(f"[{self.name}] Decision: CANCEL (No problems detected)")
                 return PipelineResult.CANCEL, None
+            
+            self.cr_logger.info(f"[{self.name}] Issue identified: {warning.title}")
+            self.cr_logger.info(f"[{self.name}] Severity: {warning.severity} (Confidence: {warning.confidence:.2f})")
+            self._log_warning_state(f"{self.name} - CREATED", warning, "CONTINUE")
             
             return PipelineResult.CONTINUE, warning
             
         except Exception as e:
             self.logger.error(f"LLM call failed: {str(e)}")
+            self.cr_logger.error(f"[{self.name}] LLM call failed: {str(e)}")
             # Return a basic warning on failure
             warning = WarningMessage(
                 title="Code change requires review",
@@ -48,6 +60,8 @@ class InitialAssessment(CodeReviewAgent):
                 confidence=0.3,
                 metadata={"agent": self.name, "error": str(e)}
             )
+            self.cr_logger.info(f"[{self.name}] Generated fallback warning due to error")
+            self._log_warning_state(f"{self.name} - FALLBACK", warning, "CONTINUE")
             return PipelineResult.CONTINUE, warning
     
     def _call_llm(self, context: AgentContext) -> str:

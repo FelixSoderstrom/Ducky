@@ -11,6 +11,8 @@ from src.database.session import get_db
 from src.database.models import Dismissal, File, Project
 from sqlalchemy import select
 
+# Get the existing code review logger (don't create a new one)
+cr_logger = logging.getLogger("code_review")
 
 class PipelineResult(Enum):
     """Enum for pipeline execution results."""
@@ -62,8 +64,38 @@ class CodeReviewAgent(ABC):
     def __init__(self, name: str, agent_type: str):
         self.name = name
         self.agent_type = agent_type
-        self.logger = logging.getLogger(f"agent.{name}")
+        self.logger = logging.getLogger(f"ducky.agent.{name}")  # Keep original logger for app-level logging
+        self.cr_logger = cr_logger  # Code review specific logger
         self.system_prompt = self._load_system_prompt()
+    
+    def _log_warning_state(self, stage: str, warning: Optional[WarningMessage], decision: str = ""):
+        """Log the current warning state to code review log."""
+        if warning:
+            self.cr_logger.info(f"[{stage}] Warning State:")
+            self.cr_logger.info(f"  ├─ Title: {warning.title}")
+            self.cr_logger.info(f"  ├─ Severity: {warning.severity} (Confidence: {warning.confidence:.2f})")
+            self.cr_logger.info(f"  ├─ Description: {warning.description}")
+            self.cr_logger.info(f"  ├─ Suggestions: {len(warning.suggestions)} items")
+            for i, suggestion in enumerate(warning.suggestions[:3], 1):  # Show first 3
+                self.cr_logger.info(f"  │   {i}. {suggestion}")
+            if len(warning.suggestions) > 3:
+                self.cr_logger.info(f"  │   ... and {len(warning.suggestions) - 3} more")
+            self.cr_logger.info(f"  └─ Metadata: {list(warning.metadata.keys())}")
+        else:
+            self.cr_logger.info(f"[{stage}] No warning message")
+        
+        if decision:
+            self.cr_logger.info(f"[{stage}] Decision: {decision}")
+    
+    def _log_llm_output(self, stage: str, output: str, truncate: int = 500):
+        """Log LLM output to code review log."""
+        if len(output) > truncate:
+            truncated = output[:truncate] + f"... [truncated, full length: {len(output)} chars]"
+        else:
+            truncated = output
+        
+        self.cr_logger.info(f"[{stage}] LLM Output:")
+        self.cr_logger.info(f"  {truncated}")
     
     def _load_system_prompt(self) -> str:
         """Load system prompt from JSON file."""
@@ -178,12 +210,56 @@ class CodeReviewPipeline:
         # For now, process only the first change
         change = changes[0]
         
-        self.logger.info(f"Starting pipeline for {change.file_path}")
+        # Log file information to code review log
+        cr_logger.info("=" * 80)
+        cr_logger.info(f"CODE REVIEW PIPELINE STARTING")
+        cr_logger.info("=" * 80)
+        cr_logger.info(f"File: {change['path']}")
+        cr_logger.info(f"Project ID: {project_id}")
+        cr_logger.info(f"Is New File: {change.get('is_new_file', False)}")
+        cr_logger.info(f"Last Edit: {change.get('last_edit', 'Unknown')}")
+        cr_logger.info("-" * 80)
+        
+        self.logger.info(f"Starting pipeline for {change['path']}")
+        
+        # Validate that we have meaningful content to analyze
+        old_version = change.get('old_version', "")
+        new_version = change.get('new_version', "")
+        
+        if not old_version and not new_version:
+            cr_logger.warning(f"No content found for file {change['path']} - skipping pipeline")
+            self.logger.warning(f"No content found for file {change['path']} - skipping pipeline")
+            return None
+        
+        # For new files, old_version can be empty, but new_version should have content
+        if change.get('is_new_file', False) and not new_version.strip():
+            cr_logger.warning(f"New file {change['path']} has no content - skipping pipeline")
+            self.logger.warning(f"New file {change['path']} has no content - skipping pipeline")
+            return None
+        
+        # For existing files, we should have both versions (unless it's a deletion)
+        if not change.get('is_new_file', False) and not old_version and not new_version:
+            cr_logger.warning(f"No content versions found for {change['path']} - skipping pipeline")
+            self.logger.warning(f"No content versions found for {change['path']} - skipping pipeline") 
+            return None
+        
+        # Log content preview
+        cr_logger.info(f"Content Analysis:")
+        cr_logger.info(f"  ├─ Old Version: {len(old_version)} characters")
+        if old_version:
+            preview_old = old_version[:200].replace('\n', '\\n')
+            ellipsis = '...' if len(old_version) > 200 else ''
+            cr_logger.info(f"  │   Preview: {preview_old}{ellipsis}")
+        cr_logger.info(f"  └─ New Version: {len(new_version)} characters")
+        if new_version:
+            preview_new = new_version[:200].replace('\n', '\\n')
+            ellipsis = '...' if len(new_version) > 200 else ''
+            cr_logger.info(f"      Preview: {preview_new}{ellipsis}")
         
         context = AgentContext(
-            old_version=change.old_content or "",
-            new_version=change.new_content or "",
-            file_path=change.file_path,
+            old_version=old_version,
+            new_version=new_version,
+            file_path=change['path'],
             project_id=project_id
         )
         
@@ -192,36 +268,65 @@ class CodeReviewPipeline:
         
         for i, agent in enumerate(self.agents):
             if not agent.should_process(context):
+                cr_logger.info(f"Skipping agent {agent.name} - conditions not met")
                 self.logger.info(f"Skipping agent {agent.name} - conditions not met")
                 continue
             
+            cr_logger.info(f"\nAGENT {i+1}/{len(self.agents)}: {agent.name}")
+            cr_logger.info("─" * 60)
             self.logger.info(f"Running agent {i+1}/{len(self.agents)}: {agent.name}")
             
             try:
                 if isinstance(agent, NotificationWriter):
                     result, notification = agent.analyze(context)
+                    cr_logger.info(f"[{agent.name}] Generated Notification:")
+                    cr_logger.info(f"  {notification}")
                 elif isinstance(agent, CodeWriter):
                     result, solution = agent.analyze(context)
+                    cr_logger.info(f"[{agent.name}] Generated Solution:")
+                    cr_logger.info(f"  Length: {len(solution)} characters")
+                    # Show first few lines of solution
+                    solution_lines = solution.split('\n')
+                    for line in solution_lines[:5]:
+                        cr_logger.info(f"  │ {line}")
+                    if len(solution_lines) > 5:
+                        remaining_lines = len(solution_lines) - 5
+                        cr_logger.info(f"  └─ ... and {remaining_lines} more lines")
                 else:
                     result, updated_warning = agent.analyze(context)
                     
                     if result == PipelineResult.CANCEL:
+                        cr_logger.info(f"Pipeline cancelled by {agent.name}")
+                        cr_logger.info(f"   Reason: Agent determined no further analysis needed")
                         self.logger.info(f"Pipeline cancelled by {agent.name}")
                         return None
                     
+                    # Log warning state after agent processing
+                    agent._log_warning_state(f"{agent.name} - OUTPUT", updated_warning, "CONTINUE")
                     context.current_warning = updated_warning
                 
             except Exception as e:
+                cr_logger.error(f"Agent {agent.name} failed: {str(e)}")
+                cr_logger.error(f"   Context: file={context.file_path}")
+                if context.current_warning:
+                    cr_logger.error(f"   Current warning: {context.current_warning.title}")
                 self.logger.error(f"Agent {agent.name} failed: {str(e)}")
                 continue
         
+        cr_logger.info("\n" + "=" * 80)
+        cr_logger.info("PIPELINE COMPLETED")
+        cr_logger.info("=" * 80)
+        
         if context.current_warning:
-            return PipelineOutput(
+            output = PipelineOutput(
                 notification=notification,
                 warning=context.current_warning,
                 solution=solution
             )
+            cr_logger.info(f"Pipeline successful - Generated complete output")
+            return output
         
+        cr_logger.warning(f"Pipeline completed but no warning message was generated")
         return None
 
 
