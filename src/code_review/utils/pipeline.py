@@ -259,6 +259,12 @@ def _handle_pipeline_output(output: PipelineOutput) -> None:
     # TODO: Save to database
     # TODO: Format for UI display
     
-    print(f"Notification: {output.notification}")
-    print(f"Warning: {output.warning.title}")
-    print(f"Solution: {output.solution}")
+    logger = logging.getLogger("pipeline.output")
+    logger.info(f"Notification: {output.notification}")
+    logger.info(f"Warning: {output.warning.title}")
+    logger.info(f"Solution: {output.solution}")
+    
+    # Also log to console for immediate feedback during development
+    logger.debug(f"Pipeline output - Notification: {output.notification}")
+    logger.debug(f"Pipeline output - Warning: {output.warning.title}")
+    logger.debug(f"Pipeline output - Solution: {output.solution}")
