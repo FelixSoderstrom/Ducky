@@ -39,7 +39,7 @@ def get_changes(project_db: Project, root_path: str, last_scan_timestamp: Option
         return []
     
     # Get local codebase metadata scan (more efficient - no file content reading)
-    local_codebase = get_codebase_metadata(root_path, project_db.api_key)
+    local_codebase = get_codebase_metadata(root_path, project_db.anthropic_key)
     
     # Create lookup dict of database files by path
     db_files: Dict[str, File] = {

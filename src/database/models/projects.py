@@ -1,6 +1,6 @@
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from typing import List, TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Optional
 
 from .base import Base, TimestampMixin
 
@@ -15,8 +15,11 @@ class Project(Base, TimestampMixin):
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    api_key: Mapped[str] = mapped_column(
+    anthropic_key: Mapped[str] = mapped_column(
         String(255), nullable=False, unique=True
+    )
+    eleven_labs_key: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
     )
     path: Mapped[str] = mapped_column(String(500), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)

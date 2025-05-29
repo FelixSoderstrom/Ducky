@@ -330,11 +330,11 @@ class CodeReviewPipeline:
         return None
 
 
-async def code_review_pipeline(changes: List[FileChange], project_id: int) -> None:
+async def code_review_pipeline(changes: List[FileChange], project_id: int) -> Optional[Dict[str, Any]]:
     """Process code changes and generate review feedback using agent pipeline."""
     
     if not changes:
-        return
+        return None
     
     # Get API key from the project in database
     with get_db() as session:
@@ -345,9 +345,9 @@ async def code_review_pipeline(changes: List[FileChange], project_id: int) -> No
         
         if not project:
             logging.error(f"Project {project_id} not found")
-            return
+            return None
         
-        api_key = project.api_key
+        api_key = project.anthropic_key
     
     # Run the pipeline in a thread pool to avoid blocking the event loop
     import asyncio
@@ -363,17 +363,22 @@ async def code_review_pipeline(changes: List[FileChange], project_id: int) -> No
         result = await loop.run_in_executor(executor, run_pipeline)
     
     if result:
-        _handle_pipeline_output(result)
+        return _handle_pipeline_output(result)
     else:
         logging.info("No issues found - pipeline was cancelled")
+        return None
 
 
-def _handle_pipeline_output(output: PipelineOutput) -> None:
-    """Handle the final pipeline output."""
-    # TODO: Implement notification system integration
-    # TODO: Save to database
-    # TODO: Format for UI display
+def _handle_pipeline_output(output: PipelineOutput) -> Dict[str, Any]:
+    """
+    Handle the final pipeline output and return it as a dictionary.
     
+    Args:
+        output: The PipelineOutput containing notification, warning, and solution
+        
+    Returns:
+        Dictionary containing the pipeline response data
+    """
     logger = logging.getLogger("pipeline.output")
     logger.info(f"Notification: {output.notification}")
     logger.info(f"Warning: {output.warning.title}")
@@ -383,3 +388,20 @@ def _handle_pipeline_output(output: PipelineOutput) -> None:
     logger.debug(f"Pipeline output - Notification: {output.notification}")
     logger.debug(f"Pipeline output - Warning: {output.warning.title}")
     logger.debug(f"Pipeline output - Solution: {output.solution}")
+    
+    # Convert to dictionary for notification system
+    response = {
+        "notification": output.notification,
+        "warning": {
+            "title": output.warning.title,
+            "severity": output.warning.severity,
+            "description": output.warning.description,
+            "suggestions": output.warning.suggestions,
+            "affected_files": output.warning.affected_files,
+            "confidence": output.warning.confidence,
+            "metadata": output.warning.metadata
+        },
+        "solution": output.solution
+    }
+    
+    return response

@@ -89,25 +89,29 @@ def update_database_with_changes(changes: List[FileChange]) -> None:
         raise
 
 
-async def initialize_new_project(root_path: str, api_key: str, notification_pref: NotificationPreference) -> None:
-    """Initialize a new project in the database.
+async def initialize_new_project(
+    root_path: str, 
+    anthropic_key: str, 
+    notification_pref: NotificationPreference,
+    eleven_labs_key: str = None
+) -> None:
+    """Initialize a new project in the database with its files and configuration.
     
     Args:
-        root_path: The directory path to scan
-        api_key: The Anthropic API key to include in the codebase dict
-        notification_pref: User's preferred notification method
+        root_path: Root directory path of the project
+        anthropic_key: The Anthropic API key for code review
+        notification_pref: The chosen notification preference
+        eleven_labs_key: The ElevenLabs API key for voice notifications (optional)
     """
-    codebase = get_codebase(root_path, api_key)
-    # Add project path and notification preference to codebase dict
+    codebase = get_codebase(root_path, anthropic_key)
+    
+    # Add project path, notification preference and API keys to codebase dict
     codebase['project_path'] = root_path
     codebase['notification_preference'] = NOTIFICATION_TYPE_MAP[notification_pref]
-    logger.debug("Initial codebase scan:")
-    logger.debug(codebase)
+    codebase['anthropic_key'] = anthropic_key
+    if eleven_labs_key:
+        codebase['eleven_labs_key'] = eleven_labs_key
     
-    # Post to database
-    try:
-        with get_db() as session:
-            post_project(session, codebase)
-    except Exception as e:
-        logger.error(f"Failed to post project to database: {str(e)}")
-        sys.exit(1) 
+    # Use the session-based approach to save to database
+    with get_db() as session:
+        post_project(session, codebase) 

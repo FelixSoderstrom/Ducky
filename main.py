@@ -11,18 +11,18 @@ setup_code_review_logger()  # Initialize code review logger
 from src.database.init_db import init_db
 from src.ui.start_ui import start_ui
 from src.ui.utils.user_interaction import get_dir_path
-from src.ui.utils.notification_preferences import get_notification_preference
+from src.ui.utils.notification_preferences import get_notification_preference_with_elevenlabs
 from src.watcher.project_manager import check_existing_project, handle_existing_project, initialize_new_project, update_database_with_changes
 from src.database.session import get_db
 from src.watcher.compare_versions import get_changes
 from src.code_review.utils.pipeline import code_review_pipeline
+from src.notifications import notify_user
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 from src.database.models.projects import Project
 
 # Create logger for main module
 logger = logging.getLogger("ducky.main")
-
 
 SCAN_INTERVAL_SECONDS = 10
 
@@ -76,7 +76,7 @@ async def scan_for_changes(root_path: str, project_id: int, app, pipeline_runnin
                         
                         # Run pipeline asynchronously in background
                         asyncio.create_task(
-                            run_pipeline_with_flag(changes, project_id, pipeline_running)
+                            run_pipeline_with_flag(changes, project_id, pipeline_running, app)
                         )
                     else:
                         logger.info("Pipeline already running - changes saved to database but skipping pipeline execution.")
@@ -98,12 +98,19 @@ async def scan_for_changes(root_path: str, project_id: int, app, pipeline_runnin
             return
 
 
-async def run_pipeline_with_flag(changes, project_id: int, pipeline_running: dict) -> None:
+async def run_pipeline_with_flag(changes, project_id: int, pipeline_running: dict, app) -> None:
     """Run the pipeline and manage the pipeline_running flag."""
     try:
         logger.info("Code review pipeline started.")
-        await code_review_pipeline(changes, project_id)
-        logger.info("Code review pipeline completed successfully.")
+        pipeline_response = await code_review_pipeline(changes, project_id)
+        
+        if pipeline_response:
+            logger.info("Code review pipeline completed successfully with response.")
+            # Notify the user based on their preferences
+            await notify_user(pipeline_response, project_id, app)
+        else:
+            logger.info("Code review pipeline completed - no issues found.")
+            
     except Exception as e:
         logger.error(f"Code review pipeline error: {str(e)}")
     finally:
@@ -154,14 +161,16 @@ async def main():
         app.close_app()
         return
     
-    notification_pref = await get_notification_preference(app.root)
-    if not notification_pref:
+    notification_result = await get_notification_preference_with_elevenlabs(app.root)
+    if not notification_result[0]:  # notification_result is (preference, elevenlabs_key)
         logger.warning("No notification preference selected. Exiting...")
         app.close_app()
         return
     
+    notification_pref, elevenlabs_key = notification_result
+    
     try:
-        await initialize_new_project(root_path, api_key, notification_pref)
+        await initialize_new_project(root_path, api_key, notification_pref, elevenlabs_key)
         project = check_existing_project(root_path)
         if not project:
             logger.error("Failed to initialize project. Exiting...")
