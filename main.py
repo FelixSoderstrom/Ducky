@@ -26,13 +26,14 @@ logger = logging.getLogger("ducky.main")
 
 SCAN_INTERVAL_SECONDS = 10
 
-async def scan_for_changes(root_path: str, project_id: int, app) -> None:
+async def scan_for_changes(root_path: str, project_id: int, app, pipeline_running: dict) -> None:
     """Continuously scan for changes in the codebase using timestamp-based comparison.
     
     Args:
         root_path: Path to the project directory
         project_id: ID of the project in the database
         app: The UI application instance to check running state
+        pipeline_running: Dict with 'active' key to track pipeline state
     """
     last_scan_timestamp = None  # Track when we last scanned
     
@@ -59,19 +60,26 @@ async def scan_for_changes(root_path: str, project_id: int, app) -> None:
                 changes = get_changes(project, root_path, last_scan_timestamp)
                 
                 if changes:
-                    logger.info(f"Found {len(changes)} changes. Running code review...")
+                    logger.info(f"Found {len(changes)} changes.")
                     
+                    # Always update database with changes first
                     try:
-                        # Run the code review pipeline
-                        code_review_pipeline(changes, project_id)
-                        logger.info("Code review pipeline completed.")
-                    except Exception as e:
-                        logger.error(f"Code review pipeline error: {str(e)}")
-                        logger.info("Pipeline completed with error, proceeding to update database.")
-                    finally:
-                        # Always update database after pipeline runs (success or failure)
-                        # This ensures the database stays in sync with the filesystem
                         update_database_with_changes(changes)
+                        logger.debug("Database updated with changes.")
+                    except Exception as e:
+                        logger.error(f"Failed to update database: {str(e)}")
+                    
+                    # Only start pipeline if none is currently running
+                    if not pipeline_running['active']:
+                        logger.info("Starting code review pipeline...")
+                        pipeline_running['active'] = True
+                        
+                        # Run pipeline asynchronously in background
+                        asyncio.create_task(
+                            run_pipeline_with_flag(changes, project_id, pipeline_running)
+                        )
+                    else:
+                        logger.info("Pipeline already running - changes saved to database but skipping pipeline execution.")
                 else:
                     logger.debug("No changes detected.")
                 
@@ -90,10 +98,27 @@ async def scan_for_changes(root_path: str, project_id: int, app) -> None:
             return
 
 
+async def run_pipeline_with_flag(changes, project_id: int, pipeline_running: dict) -> None:
+    """Run the pipeline and manage the pipeline_running flag."""
+    try:
+        logger.info("Code review pipeline started.")
+        await code_review_pipeline(changes, project_id)
+        logger.info("Code review pipeline completed successfully.")
+    except Exception as e:
+        logger.error(f"Code review pipeline error: {str(e)}")
+    finally:
+        # Always reset the flag when pipeline is done
+        pipeline_running['active'] = False
+        logger.debug("Pipeline flag reset - ready for next pipeline.")
+
+
 async def main():
     """Main entry point running UI and codebase operations concurrently."""
     # Initialize the database first
     init_db()
+    
+    # Initialize pipeline running flag
+    pipeline_running = {'active': False}
     
     # Start the UI
     app = await start_ui()
@@ -112,7 +137,7 @@ async def main():
         # Start scanning loop for existing project
         try:
             await asyncio.gather(
-                scan_for_changes(root_path, existing_project.id, app),
+                scan_for_changes(root_path, existing_project.id, app, pipeline_running),
                 app.update()
             )
         except asyncio.CancelledError:
@@ -146,7 +171,7 @@ async def main():
         # Start scanning loop for new project
         try:
             await asyncio.gather(
-                scan_for_changes(root_path, project.id, app),
+                scan_for_changes(root_path, project.id, app, pipeline_running),
                 app.update()
             )
         except asyncio.CancelledError:

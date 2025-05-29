@@ -330,7 +330,7 @@ class CodeReviewPipeline:
         return None
 
 
-def code_review_pipeline(changes: List[FileChange], project_id: int) -> None:
+async def code_review_pipeline(changes: List[FileChange], project_id: int) -> None:
     """Process code changes and generate review feedback using agent pipeline."""
     
     if not changes:
@@ -349,8 +349,18 @@ def code_review_pipeline(changes: List[FileChange], project_id: int) -> None:
         
         api_key = project.api_key
     
-    pipeline = CodeReviewPipeline(api_key)
-    result = pipeline.execute(changes, project_id)
+    # Run the pipeline in a thread pool to avoid blocking the event loop
+    import asyncio
+    import concurrent.futures
+    
+    def run_pipeline():
+        pipeline = CodeReviewPipeline(api_key)
+        return pipeline.execute(changes, project_id)
+    
+    # Execute pipeline in thread pool
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        result = await loop.run_in_executor(executor, run_pipeline)
     
     if result:
         _handle_pipeline_output(result)
