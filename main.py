@@ -1,202 +1,45 @@
 import asyncio
-import sys
 import logging
-from datetime import datetime
 
 # Initialize logging first before other imports
 from src.utils.logging_config import setup_logging, setup_code_review_logger
-setup_logging(log_level="INFO")
-setup_code_review_logger()  # Initialize code review logger
+from src.config.app_config import AppConfig
+from src.app.application_orchestrator import ApplicationOrchestrator
 
-from src.database.init_db import init_db
-from src.ui.start_ui import start_ui
-from src.ui.utils.user_interaction import get_dir_path
-from src.ui.utils.notification_preferences import get_notification_preference_with_elevenlabs
-from src.watcher.project_manager import check_existing_project, handle_existing_project, initialize_new_project, update_database_with_changes
-from src.database.session import get_db
-from src.watcher.compare_versions import get_changes
-from src.code_review.utils.pipeline import code_review_pipeline
-from src.notifications import notify_user
-from sqlalchemy import select
-from sqlalchemy.orm import joinedload
-from src.database.models.projects import Project
+# Initialize logging with configuration
+config = AppConfig.from_env()
+setup_logging(log_level=config.log_level)
+if config.enable_code_review_logging:
+    setup_code_review_logger()
 
-# Create logger for main module
 logger = logging.getLogger("ducky.main")
-
-SCAN_INTERVAL_SECONDS = 10
-
-async def scan_for_changes(root_path: str, project_id: int, app, pipeline_running: dict) -> None:
-    """Continuously scan for changes in the codebase using timestamp-based comparison.
-    
-    Args:
-        root_path: Path to the project directory
-        project_id: ID of the project in the database
-        app: The UI application instance to check running state
-        pipeline_running: Dict with 'active' key to track pipeline state
-    """
-    last_scan_timestamp = None  # Track when we last scanned
-    
-    while app.running:
-        try:
-            current_scan_time = datetime.now()
-            
-            with get_db() as session:
-                # Get fresh project instance with files eagerly loaded using 2.0 style
-                stmt = (
-                    select(Project)
-                    .options(joinedload(Project.files))
-                    .where(Project.path == root_path)
-                )
-                result = session.execute(stmt).unique()
-                project = result.scalar_one_or_none()
-                
-                if not project:
-                    logger.error("Project no longer exists in database. Exiting...")
-                    app.close_app()
-                    return
-                    
-                # Get changes between database and local versions using timestamp comparison
-                changes = get_changes(project, root_path, last_scan_timestamp)
-                
-                if changes:
-                    logger.info(f"Found {len(changes)} changes.")
-                    
-                    # Always update database with changes first
-                    try:
-                        update_database_with_changes(changes)
-                        logger.debug("Database updated with changes.")
-                    except Exception as e:
-                        logger.error(f"Failed to update database: {str(e)}")
-                    
-                    # Only start pipeline if none is currently running
-                    if not pipeline_running['active']:
-                        logger.info("Starting code review pipeline...")
-                        pipeline_running['active'] = True
-                        
-                        # Run pipeline asynchronously in background
-                        asyncio.create_task(
-                            run_pipeline_with_flag(changes, project_id, pipeline_running, app)
-                        )
-                    else:
-                        logger.info("Pipeline already running - changes saved to database but skipping pipeline execution.")
-                else:
-                    logger.debug("No changes detected.")
-                
-                # Update last scan timestamp after successful scan
-                last_scan_timestamp = current_scan_time
-                
-        except Exception as e:
-            logger.error(f"Error during scan: {str(e)}")
-            if not app.running:
-                return
-            
-        # Sleep for configured interval before next scan
-        try:
-            await asyncio.sleep(SCAN_INTERVAL_SECONDS)
-        except asyncio.CancelledError:
-            return
-
-
-async def run_pipeline_with_flag(changes, project_id: int, pipeline_running: dict, app) -> None:
-    """Run the pipeline and manage the pipeline_running flag."""
-    try:
-        logger.info("Code review pipeline started.")
-        pipeline_response = await code_review_pipeline(changes, project_id)
-        
-        if pipeline_response:
-            logger.info("Code review pipeline completed successfully with response.")
-            # Notify the user based on their preferences
-            await notify_user(pipeline_response, project_id, app)
-        else:
-            logger.info("Code review pipeline completed - no issues found.")
-            
-    except Exception as e:
-        logger.error(f"Code review pipeline error: {str(e)}")
-    finally:
-        # Always reset the flag when pipeline is done
-        pipeline_running['active'] = False
-        logger.debug("Pipeline flag reset - ready for next pipeline.")
 
 
 async def main():
-    """Main entry point running UI and codebase operations concurrently."""
-    # Initialize the database first
-    init_db()
-    
-    # Initialize pipeline running flag
-    pipeline_running = {'active': False}
-    
-    # Start the UI
-    app = await start_ui()
-    
-    # Get directory path from user
-    root_path = get_dir_path()
-    if not root_path:
-        logger.warning("No directory selected. Exiting...")
-        app.close_app()
-        return
-    
-    # Check if project exists and handle accordingly
-    existing_project = check_existing_project(root_path)
-    if existing_project:
-        # Set the project path in the UI app
-        app.set_current_project_path(root_path)
-        await handle_existing_project(existing_project, root_path)
-        # Start scanning loop for existing project
-        try:
-            await asyncio.gather(
-                scan_for_changes(root_path, existing_project.id, app, pipeline_running),
-                app.update()
-            )
-        except asyncio.CancelledError:
-            logger.info("Shutting down gracefully...")
-        finally:
-            if app.running:
-                app.close_app()
-        return
-
-    # Handle new project initialization
-    api_key = await app.get_api_key()
-    if not api_key:
-        logger.warning("No API key provided. Exiting...")
-        app.close_app()
-        return
-    
-    notification_result = await get_notification_preference_with_elevenlabs(app.root)
-    if not notification_result[0]:  # notification_result is (preference, elevenlabs_key)
-        logger.warning("No notification preference selected. Exiting...")
-        app.close_app()
-        return
-    
-    notification_pref, elevenlabs_key = notification_result
+    """Main entry point for the Ducky application."""
+    orchestrator = ApplicationOrchestrator(config)
     
     try:
-        await initialize_new_project(root_path, api_key, notification_pref, elevenlabs_key)
-        project = check_existing_project(root_path)
-        if not project:
-            logger.error("Failed to initialize project. Exiting...")
-            app.close_app()
+        # Initialize application components
+        if not await orchestrator.initialize():
+            logger.error("Failed to initialize application")
             return
-            
-        # Set the project path in the UI app
-        app.set_current_project_path(root_path)
         
-        # Start scanning loop for new project
-        try:
-            await asyncio.gather(
-                scan_for_changes(root_path, project.id, app, pipeline_running),
-                app.update()
-            )
-        except asyncio.CancelledError:
-            logger.info("Shutting down gracefully...")
-        finally:
-            if app.running:
-                app.close_app()
-                
+        # Set up project (existing or new)
+        if not await orchestrator.setup_project():
+            logger.warning("Project setup cancelled or failed")
+            return
+        
+        # Run the main application loop
+        await orchestrator.run()
+        
     except KeyboardInterrupt:
-        logger.info("Shutting down gracefully...")
-        app.close_app()
+        logger.info("Received keyboard interrupt")
+    except Exception as e:
+        logger.error(f"Unexpected error in main: {str(e)}")
+    finally:
+        # Graceful shutdown
+        await orchestrator.shutdown()
 
 
 if __name__ == "__main__":
