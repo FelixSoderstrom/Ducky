@@ -7,6 +7,24 @@ from typing import Optional
 
 logger = logging.getLogger("ducky.notifications.text")
 
+# Constants for consistent styling
+OVERLAY_CONFIG = {
+    'bg': '#2c2c2c',
+    'fg': 'white',
+    'font': ('Arial', 12, 'bold'),
+    'button_font': ('Arial', 9, 'bold'),
+    'colors': {
+        'dismiss': {'normal': '#d32f2f', 'hover': '#b71c1c'},
+        'expand': {'normal': '#388e3c', 'hover': '#2e7d32'}
+    },
+    'dimensions': {
+        'width': 300,
+        'height': 160,
+        'padding': 10,
+        'gap': 10
+    }
+}
+
 
 async def display_text_overlay(text: str, ui_app) -> None:
     """
@@ -19,58 +37,69 @@ async def display_text_overlay(text: str, ui_app) -> None:
     try:
         logger.info(f"Displaying text overlay: {text[:50]}...")
         
-        # Create overlay in the UI
-        overlay = TextOverlay(ui_app, text)
+        # Add notification to tracking system and get ID
+        notification_id = ui_app.add_unhandled_notification(text)
+        
+        overlay = TextOverlay(ui_app, text, notification_id, sticky=False)
         overlay.show()
         
-        # Auto-hide after 10 seconds
-        await asyncio.sleep(10)
-        overlay.hide()
+        # Mark as seen after initial display (no longer first time)
+        ui_app.mark_notification_as_seen(notification_id)
+        
+        # Auto-hide after 15 seconds
+        await asyncio.sleep(15)
+        
+        # If overlay still exists (wasn't manually dismissed), hide it and mark as unhandled
+        if overlay.is_visible():
+            overlay.hide()
+            logger.info(f"Text notification timed out - notification {notification_id} remains unhandled")
         
     except Exception as e:
         logger.error(f"Failed to display text overlay: {str(e)}")
 
 
-class TextOverlay:
-    """Text overlay widget for displaying notifications on the UI."""
+def show_sticky_text_overlay(text: str, ui_app, notification_id: str) -> None:
+    """
+    Display a sticky text notification that doesn't auto-hide.
+    Used when showing notifications from the notification list.
     
-    def __init__(self, ui_app, text: str):
+    Args:
+        text: The notification text to display
+        ui_app: The DuckyUI application instance
+        notification_id: The notification ID
+    """
+    try:
+        logger.info(f"Displaying sticky text overlay: {text[:50]}...")
+        
+        overlay = TextOverlay(ui_app, text, notification_id, sticky=True)
+        overlay.show()
+        
+        logger.info("Sticky text notification displayed - will remain until manually dismissed")
+        
+    except Exception as e:
+        logger.error(f"Failed to display sticky text overlay: {str(e)}")
+
+
+class TextOverlay:
+    """Simplified text overlay widget for displaying notifications."""
+    
+    def __init__(self, ui_app, text: str, notification_id: str, sticky: bool = False):
         self.ui_app = ui_app
         self.text = text
-        self.overlay_frame: Optional[tk.Frame] = None
-        self.overlay_label: Optional[tk.Label] = None
+        self.notification_id = notification_id
+        self.sticky = sticky  # If True, notification doesn't auto-hide
+        self.window: Optional[tk.Toplevel] = None
+        self._update_job: Optional[str] = None
+        self._is_visible = False
         
     def show(self) -> None:
-        """Show the text overlay on the UI."""
+        """Show the text overlay positioned to the left of the UI."""
         try:
-            # Create overlay frame
-            self.overlay_frame = tk.Frame(
-                self.ui_app.root,
-                bg='#2c2c2c',
-                relief='raised',
-                borderwidth=2
-            )
-            
-            # Create the text label
-            self.overlay_label = tk.Label(
-                self.overlay_frame,
-                text=self.text,
-                bg='#2c2c2c',
-                fg='white',
-                font=('Arial', 10, 'bold'),
-                wraplength=250,  # Wrap text to fit overlay
-                justify='left',
-                padx=10,
-                pady=5
-            )
-            self.overlay_label.pack(fill='both', expand=True)
-            
-            # Position overlay at the bottom of the UI
-            self._position_overlay()
-            
-            # Add click handler to dismiss
-            self.overlay_frame.bind('<Button-1>', lambda e: self.hide())
-            self.overlay_label.bind('<Button-1>', lambda e: self.hide())
+            self._create_window()
+            self._create_content()
+            self._position_window()
+            self._start_position_tracking()
+            self._is_visible = True
             
             logger.info("Text overlay displayed successfully")
             
@@ -80,105 +109,234 @@ class TextOverlay:
     def hide(self) -> None:
         """Hide and destroy the text overlay."""
         try:
-            if self.overlay_frame:
-                self.overlay_frame.destroy()
-                self.overlay_frame = None
-                self.overlay_label = None
-                logger.info("Text overlay hidden")
+            self._stop_position_tracking()
+            
+            if self.window:
+                self.window.destroy()
+                self.window = None
+            
+            self._is_visible = False
+            logger.info("Text overlay hidden")
         except Exception as e:
             logger.error(f"Failed to hide text overlay: {str(e)}")
     
-    def _position_overlay(self) -> None:
-        """Position the overlay at the bottom of the UI window."""
+    def is_visible(self) -> bool:
+        """Check if the overlay is currently visible."""
+        return self._is_visible and self.window is not None
+    
+    def _create_window(self) -> None:
+        """Create the overlay window with basic configuration."""
+        self.window = tk.Toplevel(self.ui_app.root)
+        self.window.overrideredirect(True)
+        self.window.attributes('-topmost', True)
+        
+        config = OVERLAY_CONFIG['dimensions']
+        self.window.geometry(f"{config['width']}x{config['height']}")
+        
+        # Main frame
+        self.main_frame = tk.Frame(
+            self.window,
+            bg=OVERLAY_CONFIG['bg'],
+            relief='raised',
+            borderwidth=1
+        )
+        self.main_frame.pack(fill='both', expand=True)
+    
+    def _create_content(self) -> None:
+        """Create the content of the overlay (buttons and text)."""
+        config = OVERLAY_CONFIG
+        
+        # Button frame at top
+        button_frame = tk.Frame(self.main_frame, bg=config['bg'])
+        button_frame.pack(fill='x', padx=config['dimensions']['padding'], 
+                         pady=(config['dimensions']['padding'], 5))
+        
+        # Create buttons
+        self._create_button(button_frame, "Dismiss", config['colors']['dismiss'], 
+                          self._dismiss, 'left')
+        self._create_button(button_frame, "Expand", config['colors']['expand'], 
+                          self._expand, 'right')
+        
+        # Text display
+        self._create_text_display()
+    
+    def _create_button(self, parent: tk.Frame, text: str, colors: dict, 
+                      command: callable, side: str) -> None:
+        """Create a styled button with hover effects."""
+        button = tk.Button(
+            parent,
+            text=text,
+            bg=colors['normal'],
+            fg=OVERLAY_CONFIG['fg'],
+            font=OVERLAY_CONFIG['button_font'],
+            relief='flat',
+            padx=10,
+            pady=3,
+            command=command,
+            cursor='hand2'
+        )
+        
+        padding = (0, 5) if side == 'left' else (5, 0)
+        button.pack(side=side, padx=padding)
+        
+        # Add hover effects
+        button.bind('<Enter>', lambda e: button.config(bg=colors['hover']))
+        button.bind('<Leave>', lambda e: button.config(bg=colors['normal']))
+    
+    def _create_text_display(self) -> None:
+        """Create the text display area with scrolling if needed."""
+        config = OVERLAY_CONFIG
+        text_frame = tk.Frame(self.main_frame, bg=config['bg'])
+        text_frame.pack(fill='both', expand=True, 
+                       padx=config['dimensions']['padding'], 
+                       pady=(0, config['dimensions']['padding']))
+        
+        # Create text widget with scrollbar
+        self.text_widget = tk.Text(
+            text_frame,
+            bg=config['bg'],
+            fg=config['fg'],
+            font=config['font'],
+            wrap='word',
+            relief='flat',
+            borderwidth=0,
+            highlightthickness=0,
+            padx=15,
+            pady=10,
+            state='normal'
+        )
+        
+        scrollbar = tk.Scrollbar(
+            text_frame,
+            orient='vertical',
+            command=self.text_widget.yview,
+            bg='#404040',
+            troughcolor=config['bg'],
+            activebackground='#606060',
+            width=12
+        )
+        
+        self.text_widget.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack widgets
+        scrollbar.pack(side='right', fill='y')
+        self.text_widget.pack(side='left', fill='both', expand=True)
+        
+        # Insert text and make read-only
+        self.text_widget.insert('1.0', self.text)
+        self.text_widget.configure(state='disabled', insertwidth=0)
+    
+    def _position_window(self) -> None:
+        """Position the overlay intelligently based on available screen space."""
         try:
-            # Update the UI to get current dimensions
             self.ui_app.root.update_idletasks()
             
-            # Get current window position and size
+            # Get UI position and dimensions
             ui_x = self.ui_app.root.winfo_x()
             ui_y = self.ui_app.root.winfo_y()
             ui_width = self.ui_app.root.winfo_width()
-            ui_height = self.ui_app.root.winfo_height()
             
-            # Calculate overlay dimensions (wrap text and measure)
-            self.overlay_label.update_idletasks()
-            overlay_width = min(ui_width, 280)  # Max width of 280px or UI width
-            overlay_height = self.overlay_label.winfo_reqheight() + 20  # Add padding
+            # Get screen dimensions
+            screen_width = self.ui_app.root.winfo_screenwidth()
             
-            # Position overlay below the UI window
-            overlay_x = ui_x
-            overlay_y = ui_y + ui_height + 5  # 5px gap below UI
+            config = OVERLAY_CONFIG['dimensions']
+            overlay_width = config['width']
+            gap = config['gap']
             
-            # Place the overlay
-            self.overlay_frame.place(
-                x=0, y=0,  # Will be repositioned by geometry
-                width=overlay_width,
-                height=overlay_height
-            )
+            # Check if there's space on the left for the overlay
+            space_on_left = ui_x
+            space_needed_on_left = overlay_width + gap + 10  # Extra margin for safety
             
-            # Set overlay window geometry to position it correctly
-            self.overlay_frame.place_forget()  # Remove place first
+            # Check if there's space on the right for the overlay
+            space_on_right = screen_width - (ui_x + ui_width)
+            space_needed_on_right = overlay_width + gap + 10  # Extra margin for safety
             
-            # Use a separate toplevel window for the overlay
-            self._create_overlay_window(overlay_x, overlay_y, overlay_width, overlay_height)
+            # Determine positioning based on available space
+            if space_on_left >= space_needed_on_left:
+                # Position on the left (preferred)
+                overlay_x = ui_x - overlay_width - gap
+                position_side = "left"
+            elif space_on_right >= space_needed_on_right:
+                # Position on the right (fallback)
+                overlay_x = ui_x + ui_width + gap
+                position_side = "right"
+            else:
+                # If neither side has enough space, try to position on the side with more space
+                if space_on_left > space_on_right:
+                    # Force on left with reduced gap
+                    overlay_x = max(10, ui_x - overlay_width - 5)
+                    position_side = "left (forced)"
+                else:
+                    # Force on right with reduced gap
+                    overlay_x = min(screen_width - overlay_width - 10, ui_x + ui_width + 5)
+                    position_side = "right (forced)"
+            
+            overlay_y = ui_y
+            
+            # Apply positioning
+            self.window.geometry(f"{overlay_width}x{config['height']}+{overlay_x}+{overlay_y}")
+            
+            logger.debug(f"Positioned overlay on {position_side} side at ({overlay_x}, {overlay_y})")
             
         except Exception as e:
             logger.error(f"Failed to position overlay: {str(e)}")
+            # Fallback to simple left positioning
+            try:
+                ui_x = self.ui_app.root.winfo_x()
+                ui_y = self.ui_app.root.winfo_y()
+                config = OVERLAY_CONFIG['dimensions']
+                overlay_x = max(10, ui_x - config['width'] - config['gap'])
+                self.window.geometry(f"{config['width']}x{config['height']}+{overlay_x}+{ui_y}")
+            except:
+                pass
     
-    def _create_overlay_window(self, x: int, y: int, width: int, height: int) -> None:
-        """Create a separate overlay window positioned relative to the main UI."""
+    def _start_position_tracking(self) -> None:
+        """Start tracking UI movement to keep overlay positioned correctly."""
+        self._last_ui_pos = (self.ui_app.root.winfo_x(), self.ui_app.root.winfo_y())
+        self._check_position()
+    
+    def _stop_position_tracking(self) -> None:
+        """Stop tracking UI movement."""
+        if self._update_job:
+            try:
+                self.ui_app.root.after_cancel(self._update_job)
+            except:
+                pass
+            self._update_job = None
+    
+    def _check_position(self) -> None:
+        """Check if UI has moved and update overlay position accordingly."""
+        if not self.window:
+            return
+            
         try:
-            # Destroy the frame we created earlier
-            if self.overlay_frame:
-                self.overlay_frame.destroy()
+            current_pos = (self.ui_app.root.winfo_x(), self.ui_app.root.winfo_y())
             
-            # Create a new toplevel window for the overlay
-            self.overlay_window = tk.Toplevel(self.ui_app.root)
-            self.overlay_window.overrideredirect(True)  # Remove window decorations
-            self.overlay_window.attributes('-topmost', True)  # Keep on top
-            self.overlay_window.geometry(f"{width}x{height}+{x}+{y}")
+            if current_pos != self._last_ui_pos:
+                self._position_window()
+                self._last_ui_pos = current_pos
             
-            # Create the frame in the new window
-            self.overlay_frame = tk.Frame(
-                self.overlay_window,
-                bg='#2c2c2c',
-                relief='raised',
-                borderwidth=2
-            )
-            self.overlay_frame.pack(fill='both', expand=True)
-            
-            # Recreate the label in the new frame
-            self.overlay_label = tk.Label(
-                self.overlay_frame,
-                text=self.text,
-                bg='#2c2c2c',
-                fg='white',
-                font=('Arial', 10, 'bold'),
-                wraplength=width - 20,  # Account for padding
-                justify='left',
-                padx=10,
-                pady=5
-            )
-            self.overlay_label.pack(fill='both', expand=True)
-            
-            # Add click handlers
-            self.overlay_window.bind('<Button-1>', lambda e: self.hide())
-            self.overlay_frame.bind('<Button-1>', lambda e: self.hide())
-            self.overlay_label.bind('<Button-1>', lambda e: self.hide())
+            # Schedule next check
+            self._update_job = self.ui_app.root.after(50, self._check_position)
             
         except Exception as e:
-            logger.error(f"Failed to create overlay window: {str(e)}")
+            logger.error(f"Error updating overlay position: {str(e)}")
     
-    def hide(self) -> None:
-        """Hide and destroy the text overlay."""
-        try:
-            if hasattr(self, 'overlay_window') and self.overlay_window:
-                self.overlay_window.destroy()
-                self.overlay_window = None
-            if self.overlay_frame:
-                self.overlay_frame.destroy()
-                self.overlay_frame = None
-                self.overlay_label = None
-            logger.info("Text overlay hidden")
-        except Exception as e:
-            logger.error(f"Failed to hide text overlay: {str(e)}") 
+    def _dismiss(self) -> None:
+        """Handle dismiss button click."""
+        logger.info("Dismiss button clicked - removing from unhandled notifications")
+        
+        # Remove from unhandled notifications since user actively dismissed it
+        self.ui_app.remove_unhandled_notification(self.notification_id)
+        
+        self.hide()
+    
+    def _expand(self) -> None:
+        """Handle expand button click - placeholder for future functionality."""
+        logger.info("Expand button clicked - removing from unhandled notifications")
+        
+        # For now, treat expand as dismiss (remove from unhandled notifications)
+        self.ui_app.remove_unhandled_notification(self.notification_id)
+        
+        logger.info("Expand functionality not implemented yet - notification marked as handled")
+        # TODO: Implement expand functionality 
