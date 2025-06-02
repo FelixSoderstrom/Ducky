@@ -14,3 +14,4 @@ class Dismissal(Base, TimestampMixin):
     new_version: Mapped[str] = mapped_column(String(50), nullable=False)
     warning: Mapped[str] = mapped_column(Text, nullable=False)
     suggestion: Mapped[str] = mapped_column(Text, nullable=False)
+    notification_message: Mapped[str] = mapped_column(Text, nullable=False)

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sys
 import tkinter as tk
 import uuid
 from datetime import datetime, timedelta
@@ -9,6 +10,7 @@ from typing import Dict, Optional, Tuple
 from PIL import Image, ImageTk
 
 from ..ui.components.notification_list import NotificationListDialog
+from ..ui.components.settings_window import SettingsWindow
 from ..ui.utils.notification_preferences import get_notification_preference_with_elevenlabs
 
 # Create logger for this module
@@ -40,10 +42,9 @@ class APIKeyDialog:
             self.dialog,
             text="Please enter your Anthropic API key:",
             wraplength=350,
-            justify="center",
-            padding=(10, 10)
+            justify="center"
         )
-        label.pack(pady=10)
+        label.pack(pady=(20, 10))  # More top padding to compensate for removed padding
         
         self.entry = tk.Entry(self.dialog, width=40, show="*")
         self.entry.pack(pady=10)
@@ -92,9 +93,15 @@ class DuckyUI:
         # Initialize API key
         self.api_key: Optional[str] = None
         
+        # Initialize current project path
+        self.current_project_path: Optional[str] = None
+        
         # Initialize notification tracking system
         self.unhandled_notifications: Dict[str, Dict] = {}
         self.notification_badge: Optional[tk.Label] = None
+        
+        # Initialize settings window
+        self.settings_window: Optional[SettingsWindow] = None
         
         # Set minimum size constants
         self.MIN_WIDTH = 80
@@ -135,6 +142,9 @@ class DuckyUI:
         
         # Bind events for dragging and resizing
         self.bind_events()
+        
+        # Initialize context menu
+        self._setup_context_menu()
         
         # Let PNG handle its own transparency naturally - no transparentcolor needed
     
@@ -412,6 +422,9 @@ class DuckyUI:
             widget.bind("<B1-Motion>", self.on_drag)
             widget.bind("<ButtonRelease-1>", self.stop_drag)
         
+        # Right-click context menu on image
+        self.image_label.bind("<Button-3>", self._show_context_menu)
+        
         # Resizing events (on resize handle)
         self.resize_handle.bind("<Button-1>", self.start_resize)
         self.resize_handle.bind("<B1-Motion>", self.on_resize)
@@ -517,6 +530,11 @@ class DuckyUI:
         dialog = APIKeyDialog(self.root)
         self.api_key = dialog.api_key
         return self.api_key
+    
+    def set_current_project_path(self, project_path: str) -> None:
+        """Set the current project path for use in settings."""
+        self.current_project_path = project_path
+        logger.info(f"Current project path set to: {project_path}")
 
     def _on_badge_click(self, event) -> None:
         """Handle notification badge click to show notification list."""
@@ -528,6 +546,53 @@ class DuckyUI:
             logger.error("NotificationListDialog not implemented yet")
         except Exception as e:
             logger.error(f"Failed to show notification list: {str(e)}")
+
+    def _setup_context_menu(self) -> None:
+        """Setup the context menu for the UI."""
+        # Create context menu
+        self.context_menu = tk.Menu(self.root, tearoff=0, bg='#2c2c2c', fg='white', 
+                                   font=('Arial', 10), relief='flat', bd=1)
+        self.context_menu.add_command(label="Settings", command=self._open_settings)
+        
+        # Configure context menu appearance
+        self.context_menu.config(
+            activebackground='#404040',
+            activeforeground='white',
+            selectcolor='white'
+        )
+        
+        logger.info("Context menu setup completed")
+    
+    def _show_context_menu(self, event) -> None:
+        """Show the context menu at the cursor position."""
+        try:
+            # Show the context menu at the event position
+            self.context_menu.post(event.x_root, event.y_root)
+            logger.info("Context menu displayed")
+        except Exception as e:
+            logger.error(f"Failed to show context menu: {str(e)}")
+        finally:
+            # Make sure to grab release when context menu is closed
+            self.context_menu.grab_release()
+    
+    def _open_settings(self) -> None:
+        """Open the settings window."""
+        logger.info("Opening settings window from context menu")
+        try:
+            if not self.current_project_path:
+                logger.error("No current project path available for settings")
+                # Show an error message to the user
+                import tkinter.messagebox as messagebox
+                messagebox.showerror("Error", "No project path available. Please restart the application.")
+                return
+                
+            logger.info(f"Using project path: {self.current_project_path}")
+            
+            if self.settings_window is None:
+                self.settings_window = SettingsWindow(self, self.current_project_path)
+            self.settings_window.show()
+        except Exception as e:
+            logger.error(f"Failed to open settings window: {str(e)}")
 
 async def start_ui() -> DuckyUI:
     """Start the Ducky UI application asynchronously.

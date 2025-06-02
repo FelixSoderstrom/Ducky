@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import TYPE_CHECKING
 
@@ -20,6 +20,9 @@ class Config(Base, TimestampMixin):
     )
     notification_id: Mapped[int] = mapped_column(
         ForeignKey("notification_types.id"), nullable=False
+    )
+    notification_sound: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="quack.wav"
     )
 
     # Relationships

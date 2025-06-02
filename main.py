@@ -140,6 +140,8 @@ async def main():
     # Check if project exists and handle accordingly
     existing_project = check_existing_project(root_path)
     if existing_project:
+        # Set the project path in the UI app
+        app.set_current_project_path(root_path)
         await handle_existing_project(existing_project, root_path)
         # Start scanning loop for existing project
         try:
@@ -177,6 +179,9 @@ async def main():
             app.close_app()
             return
             
+        # Set the project path in the UI app
+        app.set_current_project_path(root_path)
+        
         # Start scanning loop for new project
         try:
             await asyncio.gather(
