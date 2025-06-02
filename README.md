@@ -26,6 +26,7 @@ python main.py
 ```
 File System Changes → File Watcher → SQLite Database → RAG Analysis → LLM Feedback
 ```
+<<<<<<< HEAD
 
 ## Use Cases
 - **Code review automation** for solo developers
@@ -62,3 +63,38 @@ To get a sneak peek of what coming around the corner, check out my [Miro Board](
 ### Philosophy
 Ducky doesn't write code for you - it teaches you to write better code. The goal is to maintain developer agency while providing expert-level guidance on code quality and patterns.
 
+=======
+
+## Use Cases
+- **Code review automation** for solo developers
+- **Learning tool** for junior developers
+- **Consistency enforcement** across large codebases
+- **Technical debt identification** in real-time
+
+## Technical Stack
+- File system monitoring
+- SQLite for local code indexing
+- RAG pipeline for contextual analysis
+- LLM integration for feedback generation
+
+---
+
+## Detailed Documentation
+
+### Problem Statement
+Modern AI coding tools excel at code generation but often lead to poor practices when developers don't understand the generated code. Ducky bridges this gap by focusing on education and code quality rather than code generation.
+
+### How It Works
+1. **File Monitoring**: Watches your project directory for changes
+2. **Code Indexing**: Maintains a searchable database of your codebase
+3. **Change Analysis**: Uses RAG to understand the context of your changes
+4. **Feedback Generation**: LLM analyzes changes against best practices
+5. **Developer Notification**: Provides actionable feedback and explanations
+
+### Development Status
+This is the development branch. Working features are merged to main after testing.
+To get a sneak peek of what coming around the corner, check out my [Miro Board](https://miro.com/app/board/uXjVIBdU1Lc=/)
+
+### Philosophy
+Ducky doesn't write code for you - it teaches you to write better code. The goal is to maintain developer agency while providing expert-level guidance on code quality and patterns.
+>>>>>>> dev
