@@ -24,7 +24,6 @@ def post_project(session: Session, codebase: Dict[str, Any]) -> None:
             {
                 project_name: str,
                 anthropic_key: str,
-                eleven_labs_key: str (optional),
                 project_path: str,
                 notification_preference: str,  # One of: 'Voice', 'Text', 'Badge'
                 files: [
@@ -44,7 +43,6 @@ def post_project(session: Session, codebase: Dict[str, Any]) -> None:
         project = Project(
             name=codebase['project_name'],
             anthropic_key=codebase['anthropic_key'],
-            eleven_labs_key=codebase.get('eleven_labs_key'),
             path=normalize_path(codebase['project_path'])
         )
         session.add(project)
@@ -91,15 +89,13 @@ def post_project(session: Session, codebase: Dict[str, Any]) -> None:
 
 def save_project_to_db(
     codebase: Dict[str, Any], 
-    anthropic_key: str,
-    eleven_labs_key: Optional[str] = None
+    anthropic_key: str
 ) -> None:
     """Save a project and its files to the database.
     
     Args:
         codebase: Dictionary containing project metadata and files
         anthropic_key: The Anthropic API key
-        eleven_labs_key: The ElevenLabs API key (optional)
     """
     try:
         with get_db() as session:
@@ -114,7 +110,6 @@ def save_project_to_db(
             project = Project(
                 name=codebase['name'],
                 anthropic_key=anthropic_key,
-                eleven_labs_key=eleven_labs_key,
                 path=normalize_path(codebase['project_path'])
             )
             session.add(project)

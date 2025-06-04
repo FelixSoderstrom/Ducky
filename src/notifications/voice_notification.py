@@ -1,22 +1,27 @@
-"""Voice notification system for code review feedback."""
+"""Voice notification system for code review feedback using Chatterbox TTS."""
 
 import logging
 import asyncio
 import winsound
-import io
-import wave
-from typing import Optional
+import tempfile
+import os
+from typing import Optional, Dict, Any
+from pathlib import Path
 
 logger = logging.getLogger("ducky.notifications.voice")
+
+# Global model instance to avoid repeated loading
+_chatterbox_model = None
+_model_loading = False
 
 
 async def generate_speech(text: str, project_id: int) -> None:
     """
-    Generate speech from text using ElevenLabs API and play it using winsound.
+    Generate speech from text using Chatterbox TTS and play it using winsound.
     
     Args:
         text: The text to convert to speech
-        project_id: The project ID to get the API key from
+        project_id: The project ID to get voice settings from
     """
     if not text.strip():
         logger.warning("Empty text provided for speech generation")
@@ -25,40 +30,40 @@ async def generate_speech(text: str, project_id: int) -> None:
     logger.info(f"Generating speech for: {text[:50]}...")
     
     try:
-        # Import ElevenLabs client (only when needed to avoid import errors if not installed)
-        from elevenlabs.client import ElevenLabs
+        # Get voice settings from database
+        voice_settings = _get_voice_settings(project_id)
         
-        # Get ElevenLabs API key from database
-        api_key = _get_elevenlabs_api_key(project_id)
-        if not api_key:
-            logger.error("No ElevenLabs API key found - cannot generate speech")
+        # Initialize Chatterbox model if needed
+        model = await _get_chatterbox_model()
+        if not model:
+            logger.error("Failed to initialize Chatterbox TTS model")
             return
             
-        # Generate speech audio using the official API pattern
-        audio_data = await _generate_speech_audio(text, api_key)
+        # Generate speech audio using Chatterbox
+        audio_data = await _generate_speech_audio(text, model, voice_settings)
         
-        if audio_data:
-            logger.info(f"Audio generation successful - {len(audio_data)} bytes received")
-            # Convert to WAV and play with winsound
-            await _play_speech_audio(audio_data)
+        if audio_data is not None:
+            logger.info("Audio generation successful")
+            # Play with winsound
+            await _play_speech_audio(audio_data, model.sr)
         else:
             logger.error("Failed to generate speech audio")
             
-    except ImportError:
-        logger.error("ElevenLabs package not installed - cannot generate speech")
     except Exception as e:
         logger.error(f"Failed to generate speech: {str(e)}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
 
 
-def _get_elevenlabs_api_key(project_id: int) -> Optional[str]:
+def _get_voice_settings(project_id: int) -> Dict[str, Any]:
     """
-    Get ElevenLabs API key from database for the given project.
+    Get voice settings from database for the given project.
     
     Args:
         project_id: The project ID to look up
         
     Returns:
-        API key string or None if not found
+        Dictionary with voice settings including prompt path and parameters
     """
     try:
         from ..database.session import get_db
@@ -66,116 +71,179 @@ def _get_elevenlabs_api_key(project_id: int) -> Optional[str]:
         from sqlalchemy import select
         
         with get_db() as session:
-            stmt = select(Project.eleven_labs_key).where(Project.id == project_id)
+            stmt = select(Project).where(Project.id == project_id)
             result = session.execute(stmt)
-            api_key = result.scalar_one_or_none()
+            project = result.scalar_one_or_none()
             
-            if api_key:
-                return api_key
-            else:
-                logger.warning(f"No ElevenLabs API key found for project {project_id}")
-                return None
+            if not project:
+                logger.warning(f"Project {project_id} not found")
+                return _get_default_voice_settings()
+            
+            # Extract voice settings from project
+            # Note: These fields will be added to the Project model
+            settings = {
+                'voice_prompt_path': getattr(project, 'voice_prompt_path', None),
+                'exaggeration': getattr(project, 'voice_exaggeration', 0.5),
+                'cfg_weight': getattr(project, 'voice_cfg_weight', 0.5),
+            }
+            
+            return settings
                 
     except Exception as e:
-        logger.error(f"Failed to get ElevenLabs API key from database: {str(e)}")
-        return None
+        logger.error(f"Failed to get voice settings from database: {str(e)}")
+        return _get_default_voice_settings()
 
 
-async def _generate_speech_audio(text: str, api_key: str) -> Optional[bytes]:
+def _get_default_voice_settings() -> Dict[str, Any]:
+    """Get default voice settings."""
+    return {
+        'voice_prompt_path': None,
+        'exaggeration': 0.5,
+        'cfg_weight': 0.5,
+    }
+
+
+async def _get_chatterbox_model():
+    """Get or initialize the Chatterbox TTS model with thread safety."""
+    global _chatterbox_model, _model_loading
+    
+    if _chatterbox_model is not None:
+        return _chatterbox_model
+    
+    if _model_loading:
+        # Wait for model to finish loading
+        while _model_loading:
+            await asyncio.sleep(0.1)
+        return _chatterbox_model
+    
+    _model_loading = True
+    try:
+        logger.info("Initializing Chatterbox TTS model...")
+        loop = asyncio.get_event_loop()
+        
+        def load_model():
+            try:
+                from chatterbox.tts import ChatterboxTTS
+                
+                # Initialize with GPU if available, otherwise CPU
+                try:
+                    model = ChatterboxTTS.from_pretrained(device="cuda")
+                    logger.info("Chatterbox TTS model loaded on GPU")
+                except Exception:
+                    logger.info("GPU not available, loading Chatterbox TTS model on CPU")
+                    model = ChatterboxTTS.from_pretrained(device="cpu")
+                
+                return model
+            except ImportError as e:
+                logger.error(f"Chatterbox TTS not installed: {e}")
+                return None
+            except Exception as e:
+                logger.error(f"Failed to load Chatterbox TTS model: {e}")
+                return None
+        
+        _chatterbox_model = await loop.run_in_executor(None, load_model)
+        
+        if _chatterbox_model:
+            logger.info("Chatterbox TTS model initialized successfully")
+        else:
+            logger.error("Failed to initialize Chatterbox TTS model")
+        
+        return _chatterbox_model
+        
+    finally:
+        _model_loading = False
+
+
+async def _generate_speech_audio(text: str, model, voice_settings: Dict[str, Any]):
     """
-    Generate speech audio using ElevenLabs API following official documentation.
+    Generate speech audio using Chatterbox TTS.
     
     Args:
         text: Text to convert to speech
-        api_key: ElevenLabs API key
+        model: Chatterbox TTS model instance
+        voice_settings: Voice configuration settings
         
     Returns:
-        Audio data as bytes or None if failed
+        Audio tensor or None if failed
     """
     try:
-        logger.info(f"Starting audio generation for text: '{text[:50]}...'")
+        logger.info(f"Starting Chatterbox audio generation for text: '{text[:50]}...'")
         
         # Run in thread pool to avoid blocking the event loop
         loop = asyncio.get_event_loop()
         
         def generate_audio():
-            logger.debug("Importing ElevenLabs client...")
-            # Import and use the official API pattern from documentation
-            from elevenlabs.client import ElevenLabs
-            
-            logger.debug("Creating ElevenLabs client...")
-            # Create client instance with API key
-            client = ElevenLabs(api_key=api_key)
-            
-            logger.info("Making API call to ElevenLabs...")
-            # Use PCM format to avoid conversion issues - supported in version 2.1.0
-            audio = client.text_to_speech.convert(
-                text=text,
-                voice_id="JBFqnCBsd6RMkjVDRZzb",  # Default voice ID
-                model_id="eleven_multilingual_v2",
-                output_format="pcm_16000"  # 16kHz PCM format for free tier compatibility
-            )
-            
-            logger.info("ElevenLabs API call completed, processing response...")
-            
-            # Audio is returned as bytes or generator, handle both cases
-            if hasattr(audio, '__iter__') and not isinstance(audio, (str, bytes)):
-                logger.debug("Audio response is a generator, collecting chunks...")
-                # It's a generator, collect all chunks
-                audio_chunks = []
-                chunk_count = 0
-                for chunk in audio:
-                    if isinstance(chunk, bytes):
-                        audio_chunks.append(chunk)
-                        chunk_count += 1
-                        if chunk_count % 10 == 0:  # Log every 10 chunks
-                            logger.debug(f"Collected {chunk_count} audio chunks...")
+            try:
+                # Extract settings
+                voice_prompt_path = voice_settings.get('voice_prompt_path')
+                exaggeration = voice_settings.get('exaggeration', 0.5)
+                cfg_weight = voice_settings.get('cfg_weight', 0.5)
                 
-                logger.info(f"Collected {chunk_count} audio chunks, joining...")
-                result = b''.join(audio_chunks)
-                logger.info(f"Joined audio chunks into {len(result)} bytes")
-                return result
-            else:
-                logger.debug("Audio response is already bytes")
-                # It's already bytes
-                return audio
+                # Generate audio with optional voice cloning
+                if voice_prompt_path and os.path.exists(voice_prompt_path):
+                    logger.info(f"Using voice prompt from: {voice_prompt_path}")
+                    wav = model.generate(
+                        text, 
+                        audio_prompt_path=voice_prompt_path,
+                        exaggeration=exaggeration,
+                        cfg_weight=cfg_weight
+                    )
+                else:
+                    logger.info("Using default voice")
+                    wav = model.generate(
+                        text,
+                        exaggeration=exaggeration,
+                        cfg_weight=cfg_weight
+                    )
+                
+                logger.info("Chatterbox TTS generation completed successfully")
+                return wav
+                
+            except Exception as e:
+                logger.error(f"Error in Chatterbox generation: {e}")
+                return None
         
-        logger.debug("Running audio generation in thread pool...")
-        audio_data = await loop.run_in_executor(None, generate_audio)
-        logger.debug(f"Generated {len(audio_data)} bytes of PCM audio data")
-        return audio_data
+        logger.debug("Running Chatterbox audio generation in thread pool...")
+        audio_tensor = await loop.run_in_executor(None, generate_audio)
+        
+        if audio_tensor is not None:
+            logger.debug(f"Generated audio tensor with shape: {audio_tensor.shape}")
+        
+        return audio_tensor
         
     except Exception as e:
-        logger.error(f"Failed to generate speech audio: {str(e)}")
-        import traceback
-        logger.error(f"Full traceback: {traceback.format_exc()}")
+        logger.error(f"Failed to generate speech audio with Chatterbox: {str(e)}")
         return None
 
 
-async def _play_speech_audio(audio_data: bytes) -> None:
+async def _play_speech_audio(audio_tensor, sample_rate: int) -> None:
     """
-    Convert PCM audio data to WAV format and play using winsound.
+    Convert audio tensor to WAV file and play using winsound.
     
     Args:
-        audio_data: Raw PCM audio data from ElevenLabs
+        audio_tensor: PyTorch audio tensor from Chatterbox
+        sample_rate: Sample rate of the audio
     """
     try:
-        logger.info(f"Starting audio playback with {len(audio_data)} bytes of PCM data")
+        logger.info(f"Starting audio playback with sample rate: {sample_rate}")
         
-        # Convert PCM to WAV format directly (no need for MP3 conversion)
-        logger.debug("Converting PCM to WAV format...")
-        wav_data = _pcm_to_wav(audio_data)
-        logger.info(f"PCM to WAV conversion successful - {len(wav_data)} bytes of WAV data")
-        
-        # Save to temporary file and play with winsound
+        # Save tensor to temporary WAV file
         import tempfile
-        import os
+        import torchaudio
         
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_wav_file:
-            temp_wav_file.write(wav_data)
             temp_wav_path = temp_wav_file.name
         
-        logger.info(f"WAV file saved to: {temp_wav_path}")
+        logger.info(f"Saving audio to temporary file: {temp_wav_path}")
+        
+        # Save the audio tensor directly to WAV file using torchaudio
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: torchaudio.save(temp_wav_path, audio_tensor, sample_rate)
+        )
+        
+        logger.info(f"Audio saved successfully")
         
         try:
             # Verify the file exists and has content
@@ -188,7 +256,6 @@ async def _play_speech_audio(audio_data: bytes) -> None:
             
             # Play the WAV file using winsound
             logger.info("Starting winsound playback...")
-            loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 None, 
                 lambda: winsound.PlaySound(temp_wav_path, winsound.SND_FILENAME)
@@ -209,32 +276,58 @@ async def _play_speech_audio(audio_data: bytes) -> None:
         logger.error(f"Full traceback: {traceback.format_exc()}")
 
 
-def _pcm_to_wav(pcm_data: bytes, sample_rate: int = 16000, channels: int = 1, sample_width: int = 2) -> bytes:
+# Utility functions for voice management
+async def test_voice_generation(text: str = "Hello, this is a test of the Chatterbox TTS system.") -> bool:
     """
-    Convert raw PCM data to WAV format for winsound compatibility.
+    Test voice generation without requiring a project context.
     
     Args:
-        pcm_data: Raw PCM audio data from ElevenLabs
-        sample_rate: Sample rate in Hz (default: 16000 for pcm_16000 format - free tier compatible)
-        channels: Number of audio channels (default: 1 for mono)
-        sample_width: Sample width in bytes (default: 2 for 16-bit PCM)
+        text: Test text to generate
         
     Returns:
-        WAV-formatted audio data as bytes
+        True if test successful, False otherwise
     """
     try:
-        # Create WAV file in memory
-        wav_buffer = io.BytesIO()
+        logger.info("Testing Chatterbox TTS generation...")
         
-        with wave.open(wav_buffer, 'wb') as wav_file:
-            wav_file.setnchannels(channels)
-            wav_file.setsampwidth(sample_width)
-            wav_file.setframerate(sample_rate)
-            wav_file.writeframes(pcm_data)
+        model = await _get_chatterbox_model()
+        if not model:
+            return False
         
-        wav_buffer.seek(0)
-        return wav_buffer.read()
+        # Generate test audio
+        audio_data = await _generate_speech_audio(text, model, _get_default_voice_settings())
         
+        if audio_data is not None:
+            await _play_speech_audio(audio_data, model.sr)
+            logger.info("✅ Voice generation test successful!")
+            return True
+        else:
+            logger.error("❌ Voice generation test failed!")
+            return False
+            
     except Exception as e:
-        logger.error(f"Failed to convert PCM to WAV: {str(e)}")
-        raise 
+        logger.error(f"❌ Voice generation test failed: {str(e)}")
+        return False
+
+
+def get_model_info() -> Dict[str, Any]:
+    """
+    Get information about the currently loaded model.
+    
+    Returns:
+        Dictionary with model information
+    """
+    global _chatterbox_model
+    
+    if _chatterbox_model is None:
+        return {"status": "not_loaded"}
+    
+    try:
+        return {
+            "status": "loaded",
+            "device": str(_chatterbox_model.device) if hasattr(_chatterbox_model, 'device') else "unknown",
+            "sample_rate": getattr(_chatterbox_model, 'sr', 'unknown'),
+            "model_type": "Chatterbox TTS"
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)} 

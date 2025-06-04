@@ -92,8 +92,7 @@ def update_database_with_changes(changes: List[FileChange]) -> None:
 async def initialize_new_project(
     root_path: str, 
     anthropic_key: str, 
-    notification_pref: NotificationPreference,
-    eleven_labs_key: str = None
+    notification_pref: NotificationPreference
 ) -> None:
     """Initialize a new project in the database with its files and configuration.
     
@@ -101,16 +100,13 @@ async def initialize_new_project(
         root_path: Root directory path of the project
         anthropic_key: The Anthropic API key for code review
         notification_pref: The chosen notification preference
-        eleven_labs_key: The ElevenLabs API key for voice notifications (optional)
     """
     codebase = get_codebase(root_path, anthropic_key)
     
-    # Add project path, notification preference and API keys to codebase dict
+    # Add project path, notification preference and API key to codebase dict
     codebase['project_path'] = root_path
     codebase['notification_preference'] = NOTIFICATION_TYPE_MAP[notification_pref]
     codebase['anthropic_key'] = anthropic_key
-    if eleven_labs_key:
-        codebase['eleven_labs_key'] = eleven_labs_key
     
     # Use the session-based approach to save to database
     with get_db() as session:

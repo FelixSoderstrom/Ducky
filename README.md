@@ -8,6 +8,13 @@ pip install -r requirements.txt
 python main.py
 ```
 
+## Upgrading to Chatterbox TTS (Local Voice)
+If you're upgrading from an older version that used ElevenLabs:
+
+```bash
+python main.py
+```
+
 ## What It Does
 - Monitors your codebase for changes via file watchers
 - Maintains a local SQLite database of your code structure
@@ -21,6 +28,7 @@ python main.py
 - **Context-aware**: Understands your entire codebase structure
 - **Educational focus**: Explains *why* something is problematic
 - **Non-intrusive**: Suggests improvements without writing code for you
+- **Local TTS**: Uses Chatterbox TTS for voice notifications
 
 ## Architecture Overview
 ```
@@ -38,6 +46,7 @@ File System Changes → File Watcher → SQLite Database → RAG Analysis → LL
 - SQLite for local code indexing
 - RAG pipeline for contextual analysis
 - LLM integration for feedback generation
+- Chatterbox TTS for local voice synthesis
 
 ---
 
@@ -52,6 +61,14 @@ Modern AI coding tools excel at code generation but often lead to poor practices
 3. **Change Analysis**: Uses RAG to understand the context of your changes
 4. **Feedback Generation**: LLM analyzes changes against best practices
 5. **Developer Notification**: Provides actionable feedback and explanations
+
+### Voice Notifications
+Ducky uses [Chatterbox TTS](https://github.com/resemble-ai/chatterbox) for voice notifications:
+- **No API costs** - Runs completely locally
+- **No API keys required** - Zero external dependencies
+- **Voice cloning** - Support for custom voice prompts
+- **Emotion control** - Adjustable exaggeration and intensity
+
 
 ### Development Status
 This is the development branch. Working features are merged to main after testing.

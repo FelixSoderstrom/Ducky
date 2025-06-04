@@ -1,6 +1,9 @@
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
+import logging
 from .models import Base, NotificationType
+
+logger = logging.getLogger("ducky.database.init_db")
 
 
 def init_notification_types(session):
@@ -21,9 +24,9 @@ def init_notification_types(session):
 
 def init_db(database_url: str = "sqlite:///ducky.db"):
     """Initialize the database and create all tables."""
-    engine = create_engine(database_url, echo=True)
+    engine = create_engine(database_url, echo=False)
 
-    # Create all tables
+    # Create all tables with the new schema
     Base.metadata.create_all(engine)
 
     # Create session factory
@@ -35,6 +38,11 @@ def init_db(database_url: str = "sqlite:///ducky.db"):
     session = SessionLocal()
     try:
         init_notification_types(session)
+        logger.info("Database initialization completed successfully")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {str(e)}")
+        session.rollback()
+        raise
     finally:
         session.close()
 

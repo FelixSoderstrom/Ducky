@@ -1,4 +1,4 @@
-from sqlalchemy import String
+from sqlalchemy import String, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import List, TYPE_CHECKING, Optional
 
@@ -18,11 +18,19 @@ class Project(Base, TimestampMixin):
     anthropic_key: Mapped[str] = mapped_column(
         String(255), nullable=False, unique=True
     )
-    eleven_labs_key: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True
-    )
     path: Mapped[str] = mapped_column(String(500), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    
+    # Chatterbox TTS voice settings
+    voice_prompt_path: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True, comment="Path to custom voice prompt audio file"
+    )
+    voice_exaggeration: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True, default=0.5, comment="Voice exaggeration level (0.0-1.0)"
+    )
+    voice_cfg_weight: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True, default=0.5, comment="Voice CFG weight (0.0-1.0)"
+    )
 
     # Relationships
     files: Mapped[List["File"]] = relationship(
