@@ -1,28 +1,28 @@
 DEFAULT_IGNORE_PATTERNS = [
-    # Virtual environments
-    "venv/", "env/", ".env/", ".venv/", "ENV/", "env.bak/", "venv.bak/",
-    "pythonenv*/", "virtualenv/", ".python-version",
+    # Virtual environments - match directory names exactly and with wildcards
+    "venv", "env", ".env", ".venv", "ENV", "env.bak", "venv.bak",
+    "pythonenv*", "virtualenv", ".python-version",
     
     # Python specific
-    "__pycache__/", "*.pyc", "*.pyo", "*.pyd", ".Python", "*.so",
-    ".pytest_cache/", ".coverage", "htmlcov/", ".tox/", ".nox/",
-    "*.egg", "*.egg-info/", "dist/", "build/", "eggs/", "parts/",
-    "bin/", "var/", "sdist/", "develop-eggs/", "*.manifest", "*.spec",
+    "__pycache__", "*.pyc", "*.pyo", "*.pyd", ".Python", "*.so",
+    ".pytest_cache", ".coverage", "htmlcov", ".tox", ".nox",
+    "*.egg", "*.egg-info", "dist", "build", "eggs", "parts",
+    "bin", "var", "sdist", "develop-eggs", "*.manifest", "*.spec",
     "pip-log.txt", "pip-delete-this-directory.txt", ".python-version",
     
     # Node/React/Web Development
-    "node_modules/", "jspm_packages/", "bower_components/",
-    ".npm/", ".yarn/", ".pnp.*", ".next/", ".nuxt/", ".vuepress/dist",
-    ".serverless/", ".fusebox/", ".dynamodb/",
-    "build/", "dist/", "out/", "coverage/", ".cache/", ".parcel-cache/",
+    "node_modules", "jspm_packages", "bower_components",
+    ".npm", ".yarn", ".pnp.*", ".next", ".nuxt", ".vuepress",
+    ".serverless", ".fusebox", ".dynamodb",
+    "build", "dist", "out", "coverage", ".cache", ".parcel-cache",
     "*.min.js", "*.min.css", "bundle.js", "bundle.css",
     ".env.local", ".env.development.local", ".env.test.local", ".env.production.local",
     
     # IDE and Editor specific
-    ".idea/", ".vscode/", "*.swp", "*.swo", ".vs/", "*.sublime-workspace",
-    "*.sublime-project", ".project", ".settings/", ".classpath", ".factorypath",
-    ".nbproject/", ".gradle/", ".metals/", ".bloop/", ".history/",
-    "*.iml", "*.ipr", "*.iws", ".idea_modules/", "out/", ".fleet/",
+    ".idea", ".vscode", "*.swp", "*.swo", ".vs", "*.sublime-workspace",
+    "*.sublime-project", ".project", ".settings", ".classpath", ".factorypath",
+    ".nbproject", ".gradle", ".metals", ".bloop", ".history",
+    "*.iml", "*.ipr", "*.iws", ".idea_modules", "out", ".fleet",
     
     # Common binary and media files
     "*.jpg", "*.jpeg", "*.png", "*.gif", "*.ico", "*.pdf", "*.psd", "*.ai",
@@ -43,17 +43,17 @@ DEFAULT_IGNORE_PATTERNS = [
     "*.dat", "*.bak", "*.bkp", "*.dump", "*.sql", "*.mdf", "*.ldf",
     
     # Logs and temporary files
-    "*.log", "tmp/", "temp/", "logs/", ".temp/", ".tmp/",
-    "*.pid", "*.seed", "*.pid.lock", "*.log.*", "log/", ".log/",
+    "*.log", "tmp", "temp", "logs", ".temp", ".tmp",
+    "*.pid", "*.seed", "*.pid.lock", "*.log.*", "log", ".log",
     "*~", "*.bak", "*.swp", "*.tmp", "*.temp", "._*",
     
     # OS specific
     ".DS_Store", ".DS_Store?", "._*", ".Spotlight-V100",
     ".Trashes", "ehthumbs.db", "Thumbs.db", "Desktop.ini",
-    "$RECYCLE.BIN/", "System Volume Information",
+    "$RECYCLE.BIN", "System Volume Information",
     
     # Version control
-    ".git/", ".hg/", ".svn/", "CVS/", ".bzr/", "_darcs/",
+    ".git", ".hg", ".svn", "CVS", ".bzr", "_darcs",
     ".gitattributes", ".gitmodules", ".hgignore", ".hgsub", ".hgsubstate",
     
     # Build and dependency files
@@ -66,17 +66,17 @@ DEFAULT_IGNORE_PATTERNS = [
     "settings.local.*", "local_settings.*", ".editorconfig",
     
     # Documentation and reports
-    "docs/_build/", "site/", "_site/", "public/", ".docusaurus",
-    "sphinx-docs/_build/", "coverage/", "reports/", ".coverage",
-    ".hypothesis/", ".pytest_cache/",
+    "docs", "site", "_site", "public", ".docusaurus",
+    "sphinx-docs", "coverage", "reports", ".coverage",
+    ".hypothesis", ".pytest_cache",
     
     # Container and deployment
-    ".docker/", "*.dockerignore", "docker-compose.override.yml",
-    "kubernetes/", ".kube/", ".helm/", "chart/", "manifests/",
+    ".docker", "*.dockerignore", "docker-compose.override.yml",
+    "kubernetes", ".kube", ".helm", "chart", "manifests",
     
     # Security and credentials
     "*.pem", "*.key", "*.crt", "*.cer", "*.p12", "*.pfx",
-    "*.csr", "*.srl", "id_rsa", "id_dsa", ".ssh/",
+    "*.csr", "*.srl", "id_rsa", "id_dsa", ".ssh",
     
     # Compiled files and binaries
     "*.com", "*.class", "*.dll", "*.exe", "*.o", "*.obj",
@@ -84,10 +84,10 @@ DEFAULT_IGNORE_PATTERNS = [
     
     # Mobile development
     "*.apk", "*.aab", "*.ipa", "*.dSYM.zip", "*.dSYM",
-    "Pods/", ".gradle/", "build/", "captures/", ".externalNativeBuild/",
+    "Pods", ".gradle", "build", "captures", ".externalNativeBuild",
     
     # Misc development files
-    ".sass-cache/", ".stylelintcache", ".eslintcache",
-    "*.swf", "*.air", "*.ipa", "*.orig", ".terraform/",
-    ".vagrant/", ".bundle/", "vendor/bundle/",
+    ".sass-cache", ".stylelintcache", ".eslintcache",
+    "*.swf", "*.air", "*.ipa", "*.orig", ".terraform",
+    ".vagrant", ".bundle", "vendor",
 ]
