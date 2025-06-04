@@ -9,8 +9,7 @@ import winsound
 
 from ..utils.notification_preferences import (
     NotificationPreference, 
-    NOTIFICATION_TYPE_MAP,
-    ElevenLabsAPIKeyDialog
+    NOTIFICATION_TYPE_MAP
 )
 from ...database.session import get_db
 from ...database.models.projects import Project
@@ -36,7 +35,6 @@ class SettingsWindow:
         self.sound_var = tk.StringVar()
         self.available_sounds: List[str] = []
         self.anthropic_key_var = tk.StringVar()
-        self.elevenlabs_key_var = tk.StringVar()
         
         # Dismissals management
         self.dismissals: List[Dismissal] = []
@@ -136,41 +134,9 @@ class SettingsWindow:
         if not selected_preference:
             return
             
-        # Check if voice is selected and ElevenLabs key is needed
-        if selected_preference == NotificationPreference.VOICE:
-            if not self.current_project.eleven_labs_key:
-                # Show ElevenLabs API key dialog
-                dialog = ElevenLabsAPIKeyDialog(self.window)
-                if dialog.api_key:
-                    # Update the project with the new API key
-                    try:
-                        with get_db() as session:
-                            project = session.get(Project, self.current_project.id)
-                            project.eleven_labs_key = dialog.api_key
-                            session.commit()
-                            logger.info("ElevenLabs API key updated")
-                            # Update our cached project object
-                            self.current_project.eleven_labs_key = dialog.api_key
-                    except Exception as e:
-                        logger.error(f"Error updating ElevenLabs API key: {str(e)}")
-                        messagebox.showerror("Error", "Failed to save ElevenLabs API key")
-                        return
-                else:
-                    # User cancelled or didn't provide key, revert selection
-                    current_pref = self._get_current_notification_preference()
-                    if current_pref:
-                        self.notification_var.set(current_pref.name)
-                    return
-        
-        # Update the notification preference
-        if self._update_notification_preference(selected_preference):
-            messagebox.showinfo("Success", f"Notification preference updated to: {selected_preference.value}")
-        else:
-            messagebox.showerror("Error", "Failed to update notification preference")
-            # Revert to current preference
-            current_pref = self._get_current_notification_preference()
-            if current_pref:
-                self.notification_var.set(current_pref.name)
+        # Voice notifications now use local Chatterbox TTS - no API key needed
+        # Just update the preference directly
+        self._update_notification_preference(selected_preference)
         
     def show(self) -> None:
         """Show the settings window."""
@@ -717,18 +683,16 @@ class SettingsWindow:
             return "*" * 40  # Show 40 asterisks to indicate key is set
         return ""
     
-    def _get_current_api_keys(self) -> tuple[str, str]:
-        """Get current API keys for display."""
+    def _get_current_api_keys(self) -> str:
+        """Get the current API key for display purposes."""
         if not self.current_project:
-            return "", ""
-            
-        anthropic_display = self._get_api_key_display(self.current_project.anthropic_key)
-        elevenlabs_display = self._get_api_key_display(self.current_project.eleven_labs_key)
+            return ""
         
-        return anthropic_display, elevenlabs_display
+        anthropic_display = self._get_api_key_display(self.current_project.anthropic_key)
+        return anthropic_display
     
-    def _update_api_keys(self, new_anthropic_key: str, new_elevenlabs_key: str) -> bool:
-        """Update API keys in the database."""
+    def _update_api_keys(self, new_anthropic_key: str) -> bool:
+        """Update API key in the database."""
         if not self.current_project:
             logger.error("No current project to update")
             return False
@@ -750,13 +714,6 @@ class SettingsWindow:
                     changes_made = True
                     logger.info("Updated Anthropic API key")
                 
-                # Update ElevenLabs key if provided and different
-                if new_elevenlabs_key.strip() and new_elevenlabs_key != self._get_api_key_display(project.eleven_labs_key):
-                    project.eleven_labs_key = new_elevenlabs_key.strip()
-                    self.current_project.eleven_labs_key = new_elevenlabs_key.strip()
-                    changes_made = True
-                    logger.info("Updated ElevenLabs API key")
-                
                 if changes_made:
                     session.commit()
                     return True
@@ -765,62 +722,48 @@ class SettingsWindow:
                     return True  # Not an error, just no changes needed
                     
         except Exception as e:
-            logger.error(f"Error updating API keys: {str(e)}")
+            logger.error(f"Error updating API key: {str(e)}")
             return False
     
     def _handle_api_key_save(self) -> None:
-        """Handle saving API keys."""
+        """Handle saving API key."""
         anthropic_key = self.anthropic_key_var.get()
-        elevenlabs_key = self.elevenlabs_key_var.get()
         
-        # Validate that at least one key is provided and not just asterisks
+        # Validate that key is provided and not just asterisks
         anthropic_is_asterisks = anthropic_key.strip() and all(c == '*' for c in anthropic_key.strip())
-        elevenlabs_is_asterisks = elevenlabs_key.strip() and all(c == '*' for c in elevenlabs_key.strip())
         
-        # Don't update if keys are just the asterisk display
+        # Don't update if key is just the asterisk display
         if anthropic_is_asterisks:
             anthropic_key = ""
-        if elevenlabs_is_asterisks:
-            elevenlabs_key = ""
         
-        # Check if at least one real key is provided
-        if not anthropic_key.strip() and not elevenlabs_key.strip():
-            messagebox.showwarning("No Changes", "Please enter at least one API key to update.")
+        # Check if real key is provided
+        if not anthropic_key.strip():
+            messagebox.showwarning("No Changes", "Please enter an API key to update.")
             return
         
-        # Validate key formats (basic validation)
+        # Validate key format (basic validation)
         if anthropic_key.strip() and not self._validate_anthropic_key(anthropic_key.strip()):
             messagebox.showerror("Invalid Key", "Anthropic API key format appears to be invalid.")
             return
         
-        if elevenlabs_key.strip() and not self._validate_elevenlabs_key(elevenlabs_key.strip()):
-            messagebox.showerror("Invalid Key", "ElevenLabs API key format appears to be invalid.")
-            return
-        
-        # Update the keys
-        if self._update_api_keys(anthropic_key, elevenlabs_key):
-            messagebox.showinfo("Success", "API keys updated successfully!")
+        # Update the key
+        if self._update_api_keys(anthropic_key):
+            messagebox.showinfo("Success", "API key updated successfully!")
             # Refresh the display
             self._refresh_api_key_display()
         else:
-            messagebox.showerror("Error", "Failed to update API keys.")
+            messagebox.showerror("Error", "Failed to update API key.")
     
     def _validate_anthropic_key(self, key: str) -> bool:
         """Basic validation for Anthropic API key format."""
         # Anthropic keys typically start with 'sk-ant-' and are longer
         return key.startswith('sk-ant-') and len(key) > 20
     
-    def _validate_elevenlabs_key(self, key: str) -> bool:
-        """Basic validation for ElevenLabs API key format."""
-        # Basic length check for ElevenLabs keys
-        return len(key) > 10  # Simple validation
-    
     def _refresh_api_key_display(self) -> None:
-        """Refresh the API key display with current values."""
-        anthropic_display, elevenlabs_display = self._get_current_api_keys()
+        """Refresh the API key display with current value."""
+        anthropic_display = self._get_current_api_keys()
         self.anthropic_key_var.set(anthropic_display)
-        self.elevenlabs_key_var.set(elevenlabs_display)
-        
+    
     def _create_api_key_section(self, parent: tk.Frame) -> None:
         """Create the API key management section."""
         # Section title
@@ -836,7 +779,7 @@ class SettingsWindow:
         # Description
         desc_label = tk.Label(
             parent,
-            text="Update your API keys. Current keys are shown as asterisks (*). Paste new keys to update:",
+            text="Update your Anthropic API key. Current key is shown as asterisks (*). Paste new key to update:",
             bg='#1e1e1e',
             fg='#cccccc',
             font=('Arial', 10),
@@ -853,10 +796,9 @@ class SettingsWindow:
         api_key_frame = tk.Frame(api_container, bg='#2d2d2d')
         api_key_frame.pack(fill='x', padx=15, pady=15)
         
-        # Initialize the display values
-        anthropic_display, elevenlabs_display = self._get_current_api_keys()
+        # Initialize the display value
+        anthropic_display = self._get_current_api_keys()
         self.anthropic_key_var.set(anthropic_display)
-        self.elevenlabs_key_var.set(elevenlabs_display)
         
         # Anthropic key section
         anthropic_section = tk.Frame(api_key_frame, bg='#2d2d2d')
@@ -894,42 +836,6 @@ class SettingsWindow:
         )
         anthropic_info.pack(anchor='w')
         
-        # ElevenLabs key section
-        elevenlabs_section = tk.Frame(api_key_frame, bg='#2d2d2d')
-        elevenlabs_section.pack(fill='x', pady=(0, 15))
-        
-        elevenlabs_label = tk.Label(
-            elevenlabs_section,
-            text="ElevenLabs API Key (Voice Notifications):",
-            bg='#2d2d2d',
-            fg='white',
-            font=('Arial', 10, 'bold')
-        )
-        elevenlabs_label.pack(anchor='w', pady=(0, 5))
-        
-        self.elevenlabs_key_entry = tk.Entry(
-            elevenlabs_section,
-            textvariable=self.elevenlabs_key_var,
-            bg='#404040',
-            fg='white',
-            font=('Consolas', 10),  # Monospace font for keys
-            insertbackground='white',
-            relief='flat',
-            bd=5,
-            width=60
-        )
-        self.elevenlabs_key_entry.pack(fill='x', pady=(0, 5))
-        
-        # Key info for ElevenLabs
-        elevenlabs_info = tk.Label(
-            elevenlabs_section,
-            text="Optional. Required only for voice notifications",
-            bg='#2d2d2d',
-            fg='#888888',
-            font=('Arial', 9)
-        )
-        elevenlabs_info.pack(anchor='w')
-        
         # Button section
         button_section = tk.Frame(api_key_frame, bg='#2d2d2d')
         button_section.pack(fill='x')
@@ -937,7 +843,7 @@ class SettingsWindow:
         # Save button
         save_btn = tk.Button(
             button_section,
-            text="💾 Save API Keys",
+            text="💾 Save API Key",
             bg='#0066cc',
             fg='white',
             font=('Arial', 10, 'bold'),
@@ -951,7 +857,7 @@ class SettingsWindow:
         # Clear button
         clear_btn = tk.Button(
             button_section,
-            text="🗑️ Clear Fields",
+            text="🗑️ Clear Field",
             bg='#666666',
             fg='white',
             font=('Arial', 10),
@@ -1000,10 +906,10 @@ class SettingsWindow:
         # Info text
         info_text = tk.Label(
             info_content,
-            text="• API keys are stored securely in your local database\n"
+            text="• API key is stored securely in your local database\n"
                  "• Anthropic key is required for all code review functionality\n"
-                 "• ElevenLabs key is only needed if you want voice notifications\n"
-                 "• Keys are never transmitted except to their respective APIs",
+                 "• Voice notifications now use local Chatterbox TTS (no API key needed)\n"
+                 "• Key is never transmitted except to the Anthropic API",
             bg='#2d2d2d',
             fg='#888888',
             font=('Arial', 9),
@@ -1013,9 +919,8 @@ class SettingsWindow:
         info_text.pack(anchor='w')
         
     def _clear_api_key_fields(self) -> None:
-        """Clear the API key input fields."""
+        """Clear the API key input field."""
         self.anthropic_key_var.set("")
-        self.elevenlabs_key_var.set("")
     
     def _load_dismissals_from_database(self) -> List[Dismissal]:
         """Load all dismissals from the database."""

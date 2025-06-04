@@ -10,15 +10,16 @@ logger = logging.getLogger("ducky.notifications.text")
 
 
 # Maintain existing API contracts for backward compatibility
-async def display_text_overlay(text: str, ui_app) -> None:
+async def display_text_overlay(text: str, ui_app, notification_id: str = None) -> None:
     """
     Display text notification as an overlay on the UI.
     
     Args:
         text: The notification text to display
         ui_app: The DuckyUI application instance
+        notification_id: Optional pre-existing notification ID from unified pipeline
     """
-    await _display_text_overlay(text, ui_app)
+    await _display_text_overlay(text, ui_app, notification_id)
 
 
 def show_sticky_text_overlay(text: str, ui_app, notification_id: str) -> None:

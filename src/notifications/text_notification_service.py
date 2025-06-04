@@ -21,18 +21,23 @@ class TextNotificationService:
         """
         self.ui_app = ui_app
     
-    async def display_text_overlay(self, text: str) -> None:
+    async def display_text_overlay(self, text: str, notification_id: str = None) -> None:
         """
         Display text notification as an overlay on the UI.
         
         Args:
             text: The notification text to display
+            notification_id: Optional pre-existing notification ID from unified pipeline
         """
         try:
             logger.info(f"Displaying text overlay: {text[:50]}...")
             
-            # Add notification to tracking system and get ID
-            notification_id = self.ui_app.add_unhandled_notification(text)
+            # Use provided notification_id or create new one (for backward compatibility)
+            if notification_id is None:
+                notification_id = self.ui_app.add_unhandled_notification(text)
+                logger.info(f"Created new notification ID: {notification_id}")
+            else:
+                logger.info(f"Using provided notification ID: {notification_id}")
             
             # Create callbacks for notification lifecycle
             def on_dismiss():
@@ -107,16 +112,17 @@ class TextNotificationService:
 
 
 # Module-level functions for backward compatibility
-async def display_text_overlay(text: str, ui_app) -> None:
+async def display_text_overlay(text: str, ui_app, notification_id: str = None) -> None:
     """
     Display text notification as an overlay on the UI.
     
     Args:
         text: The notification text to display
         ui_app: The DuckyUI application instance
+        notification_id: Optional pre-existing notification ID from unified pipeline
     """
     service = TextNotificationService(ui_app)
-    await service.display_text_overlay(text)
+    await service.display_text_overlay(text, notification_id)
 
 
 def show_sticky_text_overlay(text: str, ui_app, notification_id: str) -> None:

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from src.database.models.projects import Project
 from src.ui.utils.user_interaction import get_dir_path
-from src.ui.utils.notification_preferences import get_notification_preference_with_elevenlabs, NotificationPreference
+from src.ui.utils.notification_preferences import get_notification_preference, NotificationPreference
 from src.watcher.project_manager import check_existing_project, handle_existing_project, initialize_new_project
 
 logger = logging.getLogger("ducky.app.project_initializer")
@@ -15,7 +15,6 @@ class ProjectPreferences:
     """Container for user project preferences."""
     api_key: str
     notification_pref: NotificationPreference
-    elevenlabs_key: Optional[str] = None
 
 
 class ProjectInitializer:
@@ -24,37 +23,43 @@ class ProjectInitializer:
     def __init__(self):
         self.logger = logger
     
-    async def get_project_directory(self) -> Optional[str]:
-        """Get project directory from user input.
+    async def setup_project(self, app) -> Optional[Project]:
+        """Main entry point for project setup flow.
         
+        Args:
+            app: UI application instance
+            
         Returns:
-            Root path of the project directory, or None if cancelled
+            Project instance if successful, None if cancelled/failed
         """
+        # Get project directory
         root_path = get_dir_path()
         if not root_path:
             self.logger.warning("No directory selected.")
             return None
         
-        self.logger.info(f"Project directory selected: {root_path}")
-        return root_path
-    
-    async def handle_existing_project(self, project: Project, root_path: str) -> bool:
-        """Handle setup for an existing project.
+        # Set project path in app for settings access
+        app.set_current_project_path(root_path)
         
-        Args:
-            project: Existing project from database
-            root_path: Path to the project directory
-            
-        Returns:
-            True if setup successful, False otherwise
-        """
-        try:
-            await handle_existing_project(project, root_path)
-            self.logger.info(f"Existing project '{project.name}' ready for monitoring")
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to handle existing project: {str(e)}")
-            return False
+        # Check if project already exists
+        existing_project = check_existing_project(root_path)
+        if existing_project:
+            # Handle existing project
+            project = await handle_existing_project(existing_project, app)
+            if project:
+                self.logger.info(f"Using existing project: {project.name}")
+                return project
+            else:
+                self.logger.warning("Existing project setup cancelled or failed")
+                return None
+        
+        # Get user preferences for new project
+        preferences = await self.collect_user_preferences(app)
+        if not preferences:
+            return None
+        
+        # Initialize new project
+        return await self.setup_new_project(root_path, preferences)
     
     async def collect_user_preferences(self, app) -> Optional[ProjectPreferences]:
         """Collect API key and notification preferences from user.
@@ -72,17 +77,14 @@ class ProjectInitializer:
             return None
         
         # Get notification preferences
-        notification_result = await get_notification_preference_with_elevenlabs(app.root)
-        if not notification_result[0]:  # notification_result is (preference, elevenlabs_key)
+        notification_pref = await get_notification_preference(app.root)
+        if not notification_pref:
             self.logger.warning("No notification preference selected.")
             return None
         
-        notification_pref, elevenlabs_key = notification_result
-        
         return ProjectPreferences(
             api_key=api_key,
-            notification_pref=notification_pref,
-            elevenlabs_key=elevenlabs_key
+            notification_pref=notification_pref
         )
     
     async def setup_new_project(self, root_path: str, preferences: ProjectPreferences) -> Optional[Project]:
@@ -99,8 +101,7 @@ class ProjectInitializer:
             await initialize_new_project(
                 root_path=root_path,
                 anthropic_key=preferences.api_key,
-                notification_pref=preferences.notification_pref,
-                eleven_labs_key=preferences.elevenlabs_key
+                notification_pref=preferences.notification_pref
             )
             
             # Verify project was created

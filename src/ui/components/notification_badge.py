@@ -17,6 +17,8 @@ class NotificationBadge:
         self.badge: Optional[tk.Label] = None
         self.unhandled_notifications: Dict[str, Dict] = {}
         self.click_callback: Optional[Callable] = None
+        self.notification_dialog = None  # Track the current notification dialog
+        self.dialog_open = False  # Track if dialog is currently open
         
         # Create the badge widget
         self._create_badge()
@@ -167,27 +169,103 @@ class NotificationBadge:
         if not self.badge:
             return
             
-        if len(self.unhandled_notifications) > 0:
-            # Badge should be visible, but only actually show if positioned
-            # The badge will be shown when update_position_and_size is called
-            logger.debug(f"Badge should be visible ({len(self.unhandled_notifications)} unhandled)")
+        notification_count = len(self.unhandled_notifications)
+        
+        if notification_count > 0:
+            # Badge should be visible - force visibility update
+            logger.debug(f"Showing badge ({notification_count} unhandled)")
+            self._show_badge()
         else:
-            # Hide badge
+            # Hide badge and close any open dialog
             self.badge.place_forget()
+            if self.dialog_open and self.notification_dialog:
+                self._close_notification_dialog()
             logger.debug("Badge hidden (no unhandled notifications)")
     
+    def _show_badge(self) -> None:
+        """Force the badge to be visible by calling update_position_and_size if container dimensions are available."""
+        if not self.badge or not self.parent_container:
+            return
+            
+        try:
+            # Get current container dimensions
+            self.parent_container.update_idletasks()
+            container_width = self.parent_container.winfo_width()
+            container_height = self.parent_container.winfo_height()
+            
+            # Only show if we have valid dimensions AND there are actually notifications
+            if container_width > 1 and container_height > 1 and len(self.unhandled_notifications) > 0:
+                self.update_position_and_size(container_width, container_height)
+                logger.debug(f"Badge forced visible at container size {container_width}x{container_height}")
+            else:
+                if len(self.unhandled_notifications) == 0:
+                    logger.debug("No notifications to show, keeping badge hidden")
+                else:
+                    logger.debug("Container dimensions not ready, badge will show when positioned")
+                
+        except Exception as e:
+            logger.error(f"Failed to show badge: {str(e)}")
+    
+    def force_visibility_update(self) -> None:
+        """Force an update of badge visibility - useful when called from external components."""
+        self._update_visibility()
+    
     def _on_badge_click(self, event) -> None:
-        """Handle notification badge click.
+        """Handle notification badge click with toggle behavior.
         
         Args:
             event: The click event
         """
         logger.info("Notification badge clicked")
+        
+        # Toggle dialog behavior
+        if self.dialog_open and self.notification_dialog:
+            # Close existing dialog
+            self._close_notification_dialog()
+        else:
+            # Open new dialog
+            self._open_notification_dialog()
+    
+    def _open_notification_dialog(self) -> None:
+        """Open the notification list dialog."""
+        if self.dialog_open:
+            logger.debug("Dialog already open, ignoring open request")
+            return
+            
         if self.click_callback:
             try:
-                self.click_callback(event)
+                # The callback should return the dialog instance
+                from ..components.notification_list import NotificationListDialog
+                
+                # Get the UI app from the callback context
+                # We need to pass self to the callback so it can manage the dialog state
+                self.notification_dialog = self.click_callback(event=None, badge=self)
+                
+                if self.notification_dialog:
+                    self.dialog_open = True
+                    logger.info("Notification dialog opened")
+                else:
+                    logger.warning("Failed to create notification dialog")
+                    
             except Exception as e:
-                logger.error(f"Error in badge click callback: {str(e)}")
+                logger.error(f"Error opening notification dialog: {str(e)}")
+    
+    def _close_notification_dialog(self) -> None:
+        """Close the notification list dialog."""
+        if self.notification_dialog:
+            try:
+                self.notification_dialog.hide()
+                self.notification_dialog = None
+                self.dialog_open = False
+                logger.info("Notification dialog closed")
+            except Exception as e:
+                logger.error(f"Error closing notification dialog: {str(e)}")
+    
+    def on_dialog_closed(self) -> None:
+        """Called when the dialog is closed externally (e.g., close button)."""
+        self.notification_dialog = None
+        self.dialog_open = False
+        logger.debug("Dialog state reset after external close")
     
     def is_visible(self) -> bool:
         """Check if the badge is currently visible.

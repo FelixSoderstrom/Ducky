@@ -37,15 +37,24 @@ async def notify_user(pipeline_response: Dict[str, Any], project_id: int, ui_app
         
         logger.info(f"Sending notification via {notification_type}")
         
+        # Extract notification text for all types
+        notification_text = pipeline_response.get("notification", "")
+        
+        # Always add to unhandled notifications list for badge tracking (unified pipeline)
+        notification_id = ui_app.add_unhandled_notification(notification_text)
+        logger.info(f"Added notification to badge tracking: {notification_id}")
+        
         # Handle different notification types
         if notification_type.lower() == "voice":
-            await _handle_voice_notification(pipeline_response, project_id)
+            await _handle_voice_notification(pipeline_response, project_id, ui_app, notification_id)
         elif notification_type.lower() == "text":
-            await _handle_text_notification(pipeline_response, ui_app)
+            await _handle_text_notification(pipeline_response, ui_app, notification_id)
         elif notification_type.lower() == "badge":
-            await _handle_sound_notification(pipeline_response)
+            await _handle_sound_notification(pipeline_response, ui_app, notification_id)
         else:
             logger.warning(f"Unknown notification type: {notification_type}")
+            # Still mark as handled even for unknown types
+            ui_app.remove_unhandled_notification(notification_id)
             
     except Exception as e:
         logger.error(f"Failed to send notification: {str(e)}")
@@ -84,21 +93,46 @@ def _get_user_notification_preference(project_id: int) -> Optional[str]:
         return None
 
 
-async def _handle_voice_notification(pipeline_response: Dict[str, Any], project_id: int) -> None:
+async def _handle_voice_notification(pipeline_response: Dict[str, Any], project_id: int, ui_app, notification_id: str) -> None:
     """Handle voice-based notifications."""
     logger.info("Generating voice notification")
     notification_text = pipeline_response.get("notification", "")
-    await generate_speech(notification_text, project_id)
+    
+    try:
+        # Play the voice notification
+        await generate_speech(notification_text, project_id)
+        
+        # Mark as seen immediately since voice notifications are "consumed" once heard
+        ui_app.mark_notification_as_seen(notification_id)
+        logger.info("Voice notification completed - marked as seen, remains in badge for review")
+        
+    except Exception as e:
+        logger.error(f"Failed to play voice notification: {str(e)}")
+        # Keep the notification in badge even if voice failed
 
 
-async def _handle_text_notification(pipeline_response: Dict[str, Any], ui_app) -> None:
+async def _handle_text_notification(pipeline_response: Dict[str, Any], ui_app, notification_id: str) -> None:
     """Handle text overlay notifications."""
     logger.info("Displaying text overlay notification")
     notification_text = pipeline_response.get("notification", "")
-    await display_text_overlay(notification_text, ui_app)
+    
+    # Note: Text notifications handle their own lifecycle in text_notification_service
+    # The notification_id is passed through the existing text notification system
+    await display_text_overlay(notification_text, ui_app, notification_id)
 
 
-async def _handle_sound_notification(pipeline_response: Dict[str, Any]) -> None:
+async def _handle_sound_notification(pipeline_response: Dict[str, Any], ui_app, notification_id: str) -> None:
     """Handle sound-based notifications."""
     logger.info("Playing notification sound")
-    await play_notification_sound() 
+    
+    try:
+        # Play the notification sound
+        await play_notification_sound()
+        
+        # Mark as seen immediately since sound notifications are "consumed" once heard
+        ui_app.mark_notification_as_seen(notification_id)
+        logger.info("Sound notification completed - marked as seen, remains in badge for review")
+        
+    except Exception as e:
+        logger.error(f"Failed to play notification sound: {str(e)}")
+        # Keep the notification in badge even if sound failed 

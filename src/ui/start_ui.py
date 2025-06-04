@@ -80,6 +80,9 @@ class DuckyUI:
         if image_container:
             self.notification_badge = NotificationBadge(image_container)
             self.notification_badge.set_click_callback(self._on_badge_click)
+            # Don't position badge initially - it will show when notifications are added
+            # The badge starts hidden and only shows when there are actual notifications
+            logger.debug("Notification badge created and hidden initially")
         
         # Update image display
         self._update_image_display()
@@ -131,14 +134,32 @@ class DuckyUI:
         image = self.image_manager.update_image_size(self.width, self.height)
         self.layout.update_image(image)
     
-    def _on_badge_click(self, event) -> None:
-        """Handle notification badge click to show notification list."""
+    def _on_badge_click(self, event, badge=None) -> Optional['NotificationListDialog']:
+        """Handle notification badge click to show notification list.
+        
+        Args:
+            event: The click event (can be None)
+            badge: The notification badge instance
+            
+        Returns:
+            NotificationListDialog: The created dialog instance
+        """
         logger.info("Notification badge clicked - showing notification list")
         try:
             dialog = NotificationListDialog(self)
+            
+            # Set up dialog close callback to notify the badge
+            if badge:
+                def on_dialog_close():
+                    badge.on_dialog_closed()
+                # We'll need to add this to the dialog
+                dialog.set_close_callback(on_dialog_close)
+            
             dialog.show()
+            return dialog
         except Exception as e:
             logger.error(f"Failed to show notification list: {str(e)}")
+            return None
     
     def _open_settings(self) -> None:
         """Open the settings window."""
@@ -214,7 +235,11 @@ class DuckyUI:
             str: The unique notification ID
         """
         if hasattr(self, 'notification_badge'):
-            return self.notification_badge.add_notification(text)
+            notification_id = self.notification_badge.add_notification(text)
+            # Force badge visibility update and positioning
+            self.root.update_idletasks()
+            self.notification_badge.update_position_and_size(self.width, self.height)
+            return notification_id
         else:
             logger.warning("Notification badge not initialized")
             return ""
