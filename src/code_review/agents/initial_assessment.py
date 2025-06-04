@@ -2,7 +2,8 @@ from typing import Optional
 import json
 from anthropic import Anthropic
 
-from ..utils.pipeline import CodeReviewAgent, PipelineResult, WarningMessage, AgentContext
+from .base.base_agent import CodeReviewAgent
+from ..models.pipeline_models import PipelineResult, WarningMessage, AgentContext
 
 
 class InitialAssessment(CodeReviewAgent):

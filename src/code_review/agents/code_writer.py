@@ -8,11 +8,12 @@ from typing import Optional
 import json
 from anthropic import Anthropic
 
-from ..utils.pipeline import CodeReviewAgent, PipelineResult, WarningMessage, AgentContext
+from .base.base_agent import CodeReviewAgent
+from ..models.pipeline_models import PipelineResult, WarningMessage, AgentContext
 
 
 class CodeWriter(CodeReviewAgent):
-    """Agent that writes corrected code examples."""
+    """Agent that creates improved code examples addressing identified issues."""
     
     def __init__(self, api_key: str):
         super().__init__("CodeWriter", "code_writer")

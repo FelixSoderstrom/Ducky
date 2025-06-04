@@ -2,11 +2,12 @@
 
 # Args: new version, old version, path to new version, warning message
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import json
 from anthropic import Anthropic
 
-from ..utils.pipeline import RAGCapableAgent, PipelineResult, WarningMessage, AgentContext
+from .base.rag_agent import RAGCapableAgent
+from ..models.pipeline_models import PipelineResult, WarningMessage, AgentContext
 from ...database.models import File
 
 

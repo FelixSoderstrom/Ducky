@@ -4,18 +4,19 @@
 
 # Returns: enhanced warning message from a syntax standpoint
 
-from typing import Optional
+from typing import Optional, Dict, Any
 import json
 from anthropic import Anthropic
 
-from ..utils.pipeline import MCPCapableAgent, PipelineResult, WarningMessage, AgentContext
+from .base.mcp_agent import MCPCapableAgent
+from ..models.pipeline_models import PipelineResult, WarningMessage, AgentContext
 
 
 class SyntaxValidation(MCPCapableAgent):
     """Agent that checks syntax and best practices using documentation."""
     
     def __init__(self, api_key: str):
-        super().__init__("SyntaxCheck", "syntax_check")
+        super().__init__("SyntaxValidation", "syntax_check")
         self.client = Anthropic(api_key=api_key)
         self.model = "claude-3-5-sonnet-20241022"
     
