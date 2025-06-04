@@ -56,14 +56,8 @@ Severity: {warning.severity}
 Confidence: {warning.confidence}
 Suggestions: {', '.join(warning.suggestions[:3]) if warning.suggestions else 'None'}
 
-Please convert this technical warning into a friendly, encouraging notification that:
-1. Uses warm, supportive language
-2. Avoids technical jargon 
-3. Creates curiosity rather than alarm
-4. Maintains Ducky's educational and helpful personality
-5. Ends with an invitation to learn more
-
-Keep it concise (1-2 sentences) but engaging. The goal is to encourage the user to want to learn more about the issue rather than feeling overwhelmed."""
+Please convert this technical warning into a brief notification of the problem.
+Remember that the DEVELOPER is currently coding and that your message will most definately interrupt them while they are coding. So make sure to write short and consice messages that are straight to the point but still easy to understand. Your message might be read out loud using TTS, so do NOT use emojis or symbols."""
                 }
             ]
             

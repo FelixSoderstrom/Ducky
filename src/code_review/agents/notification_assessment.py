@@ -59,12 +59,13 @@ class NotificationAssessment(RAGCapableAgent):
             messages = [
                 {
                     "role": "user",
-                    "content": f"""Current Warning:
+                    "content": f"""
+Current Warning:
 Title: {warning.title}
 Description: {warning.description}
 Severity: {warning.severity}
 
-User's Dismissal History:
+DEVELOPERS previously dismissed warnings:
 {dismissal_summary}
 
 Based on the user's dismissal history, should we notify them about this current warning? 

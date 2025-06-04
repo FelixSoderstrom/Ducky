@@ -84,16 +84,16 @@ New Version:
 {context.new_version}
 ```
 
-Please analyze these code changes and determine if they warrant further review. Focus on functional changes that could introduce bugs, security issues, or performance problems. Ignore trivial changes like formatting, comments, or cosmetic improvements.
+Analyze the code change and determine if it needs further review. Provide a brief description to where and why the code needs correction.
 
 Respond with JSON in this format:
 {{
     "should_continue": true/false,
     "title": "Brief issue title",
-    "description": "Detailed description of the problem",
+    "description": "Brief description of the problem",
     "severity": "low/medium/high/critical",
     "confidence": 0.0-1.0,
-    "reasoning": "Why this change needs attention"
+    "reasoning": "Brief explanation on why the code needs correction"
 }}
 
 If the change is trivial or doesn't need attention, set should_continue to false."""

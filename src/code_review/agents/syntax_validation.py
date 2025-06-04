@@ -88,7 +88,7 @@ Respond with JSON:
     "best_practice_violations": ["list of best practice issues"],
     "recommendations": ["list of specific improvement suggestions"],
     "severity_adjustment": "none/increase/decrease",
-    "additional_suggestions": ["syntax-specific suggestions to add"]
+    "additional_suggestions": ["specific suggestions to add"]
 }}"""
                 }
             ]

@@ -75,14 +75,8 @@ Suggested Improvements:
 Metadata: {context.current_warning.metadata}
 
 Please provide a corrected version of the code that addresses all identified issues while:
-1. Preserving the original functionality and intent
-2. Applying all fixes and improvements identified by the analysis
-3. Writing clean, readable code that serves as a good example  
-4. Including helpful comments explaining the improvements made
-5. Focusing on teaching through example rather than just fixing
-6. Ensuring the solution is practical and immediately applicable
 
-Respond with the complete corrected code, including explanatory comments highlighting the improvements."""
+Respond with the complete corrected code and nothing else."""
                 }
             ]
             
