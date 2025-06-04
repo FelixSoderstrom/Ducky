@@ -44,14 +44,10 @@ class ProjectInitializer:
         # Check if project already exists
         existing_project = check_existing_project(root_path)
         if existing_project:
-            # Handle existing project
-            project = await handle_existing_project(existing_project, app)
-            if project:
-                self.logger.info(f"Using existing project: {project.name}")
-                return project
-            else:
-                self.logger.warning("Existing project setup cancelled or failed")
-                return None
+            # Handle existing project - pass correct parameters and handle return value
+            await handle_existing_project(existing_project, root_path)
+            self.logger.info(f"Using existing project: {existing_project.name}")
+            return existing_project
         
         # Get user preferences for new project
         preferences = await self.collect_user_preferences(app)
@@ -97,22 +93,17 @@ class ProjectInitializer:
         Returns:
             Project instance if successful, None otherwise
         """
-        try:
-            await initialize_new_project(
-                root_path=root_path,
-                anthropic_key=preferences.api_key,
-                notification_pref=preferences.notification_pref
-            )
+        await initialize_new_project(
+            root_path=root_path,
+            anthropic_key=preferences.api_key,
+            notification_pref=preferences.notification_pref
+        )
+        
+        # Verify project was created
+        project = check_existing_project(root_path)
+        if not project:
+            self.logger.error("Failed to initialize project - not found in database")
+            return None
             
-            # Verify project was created
-            project = check_existing_project(root_path)
-            if not project:
-                self.logger.error("Failed to initialize project - not found in database")
-                return None
-                
-            self.logger.info(f"New project '{project.name}' initialized successfully")
-            return project
-            
-        except Exception as e:
-            self.logger.error(f"Failed to initialize new project: {str(e)}")
-            return None 
+        self.logger.info(f"New project '{project.name}' initialized successfully")
+        return project 

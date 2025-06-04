@@ -41,7 +41,7 @@ async def notify_user(pipeline_response: Dict[str, Any], project_id: int, ui_app
         notification_text = pipeline_response.get("notification", "")
         
         # Always add to unhandled notifications list for badge tracking (unified pipeline)
-        notification_id = ui_app.add_unhandled_notification(notification_text)
+        notification_id = ui_app.add_unhandled_notification(notification_text, pipeline_response)
         logger.info(f"Added notification to badge tracking: {notification_id}")
         
         # Handle different notification types

@@ -5,6 +5,7 @@ import asyncio
 from typing import Optional
 
 from ..ui.components.text_overlay import TextOverlay
+from ..database.operations.post_dismissal import post_dismissal_from_pipeline_data
 
 logger = logging.getLogger("ducky.notifications.text_notification_service")
 
@@ -42,6 +43,19 @@ class TextNotificationService:
             # Create callbacks for notification lifecycle
             def on_dismiss():
                 logger.info("Dismiss button clicked - removing from unhandled notifications")
+                
+                # Get pipeline data for dismissal before removing notification
+                notification_data = self.ui_app.get_notification_by_id(notification_id)
+                if notification_data and notification_data.get('pipeline_data'):
+                    logger.info("Saving dismissal to database")
+                    success = post_dismissal_from_pipeline_data(notification_data['pipeline_data'])
+                    if success:
+                        logger.info("Dismissal saved successfully")
+                    else:
+                        logger.error("Failed to save dismissal to database")
+                else:
+                    logger.warning("No pipeline data found for notification - dismissal not saved")
+                
                 self.ui_app.remove_unhandled_notification(notification_id)
             
             def on_expand():
@@ -88,6 +102,19 @@ class TextNotificationService:
             # Create callbacks for notification lifecycle
             def on_dismiss():
                 logger.info("Sticky notification dismissed - removing from unhandled notifications")
+                
+                # Get pipeline data for dismissal before removing notification
+                notification_data = self.ui_app.get_notification_by_id(notification_id)
+                if notification_data and notification_data.get('pipeline_data'):
+                    logger.info("Saving dismissal to database")
+                    success = post_dismissal_from_pipeline_data(notification_data['pipeline_data'])
+                    if success:
+                        logger.info("Dismissal saved successfully")
+                    else:
+                        logger.error("Failed to save dismissal to database")
+                else:
+                    logger.warning("No pipeline data found for notification - dismissal not saved")
+                
                 self.ui_app.remove_unhandled_notification(notification_id)
             
             def on_expand():

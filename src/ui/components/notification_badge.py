@@ -85,11 +85,12 @@ class NotificationBadge:
         
         logger.debug(f"Badge positioned at x={container_width - badge_offset - circle_size}, y={badge_offset}")
     
-    def add_notification(self, text: str) -> str:
+    def add_notification(self, text: str, pipeline_data: dict = None) -> str:
         """Add a notification to the unhandled notifications tracker.
         
         Args:
             text: The notification text
+            pipeline_data: Optional pipeline data containing context for dismissals
             
         Returns:
             str: The unique notification ID
@@ -100,7 +101,8 @@ class NotificationBadge:
             'timestamp': datetime.now(),
             'id': notification_id,
             'first_time': True,  # Track if this is the first time seeing this notification
-            'dismissed': False
+            'dismissed': False,
+            'pipeline_data': pipeline_data  # Store pipeline data for dismissals
         }
         
         logger.info(f"Added unhandled notification: {notification_id}")

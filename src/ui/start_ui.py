@@ -225,17 +225,18 @@ class DuckyUI:
     
     # Notification management methods (maintaining compatibility)
     
-    def add_unhandled_notification(self, text: str) -> str:
+    def add_unhandled_notification(self, text: str, pipeline_data: dict = None) -> str:
         """Add a notification to the unhandled notifications tracker.
         
         Args:
             text: The notification text
+            pipeline_data: Optional pipeline data containing context for dismissals
             
         Returns:
             str: The unique notification ID
         """
         if hasattr(self, 'notification_badge'):
-            notification_id = self.notification_badge.add_notification(text)
+            notification_id = self.notification_badge.add_notification(text, pipeline_data)
             # Force badge visibility update and positioning
             self.root.update_idletasks()
             self.notification_badge.update_position_and_size(self.width, self.height)

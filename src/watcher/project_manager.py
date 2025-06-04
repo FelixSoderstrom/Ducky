@@ -29,12 +29,8 @@ def check_existing_project(root_path: str) -> Optional[Project]:
     Raises:
         Exception: If there's an error accessing the database
     """
-    try:
-        with get_db() as session:
-            return get_project_by_path(session, root_path)
-    except Exception as e:
-        logger.error(f"Error checking for existing project: {str(e)}")
-        sys.exit(1)
+    with get_db() as session:
+        return get_project_by_path(session, root_path)
 
 
 def get_project_with_files(session: Session, project_id: int) -> Project:
