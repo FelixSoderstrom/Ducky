@@ -6,6 +6,7 @@ from typing import Optional
 
 from ..ui.components.text_overlay import TextOverlay
 from ..database.operations.post_dismissal import post_dismissal_from_pipeline_data
+from ..services.chat_service import ChatService
 
 logger = logging.getLogger("ducky.notifications.text_notification_service")
 
@@ -59,10 +60,20 @@ class TextNotificationService:
                 self.ui_app.remove_unhandled_notification(notification_id)
             
             def on_expand():
-                logger.info("Expand button clicked - removing from unhandled notifications")
-                self.ui_app.remove_unhandled_notification(notification_id)
-                logger.info("Expand functionality not implemented yet - notification marked as handled")
-                # TODO: Implement expand functionality
+                logger.info("Expand button clicked - starting chat session")
+                notification_data = self.ui_app.get_notification_by_id(notification_id)
+                if notification_data and notification_data.get('pipeline_data'):
+                    # Initialize chat service and start chat
+                    chat_service = ChatService(self.ui_app)
+                    asyncio.create_task(chat_service.start_chat(
+                        notification_data['pipeline_data'], 
+                        notification_id
+                    ))
+                    logger.info("Chat session initiated")
+                else:
+                    logger.error("No pipeline data available for chat - cannot start chat")
+                    # Remove notification anyway since user tried to expand
+                    self.ui_app.remove_unhandled_notification(notification_id)
             
             # Create and show overlay
             overlay = TextOverlay(
@@ -118,10 +129,20 @@ class TextNotificationService:
                 self.ui_app.remove_unhandled_notification(notification_id)
             
             def on_expand():
-                logger.info("Sticky notification expanded - removing from unhandled notifications")
-                self.ui_app.remove_unhandled_notification(notification_id)
-                logger.info("Expand functionality not implemented yet - notification marked as handled")
-                # TODO: Implement expand functionality
+                logger.info("Sticky notification expanded - starting chat session")
+                notification_data = self.ui_app.get_notification_by_id(notification_id)
+                if notification_data and notification_data.get('pipeline_data'):
+                    # Initialize chat service and start chat
+                    chat_service = ChatService(self.ui_app)
+                    asyncio.create_task(chat_service.start_chat(
+                        notification_data['pipeline_data'], 
+                        notification_id
+                    ))
+                    logger.info("Chat session initiated")
+                else:
+                    logger.error("No pipeline data available for chat - cannot start chat")
+                    # Remove notification anyway since user tried to expand
+                    self.ui_app.remove_unhandled_notification(notification_id)
             
             # Create and show overlay (sticky - no auto-hide)
             overlay = TextOverlay(
