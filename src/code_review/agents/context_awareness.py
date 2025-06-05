@@ -4,6 +4,7 @@
 
 from typing import Optional, List, Dict, Any
 import json
+import datetime
 from anthropic import Anthropic
 
 from .base.rag_agent import RAGCapableAgent
@@ -23,6 +24,7 @@ class ContextAwareness(RAGCapableAgent):
         """
         Analyze broader codebase context to understand why the change was made.
         Can cancel pipeline if change is justified by context.
+        Uses ADDITIVE approach - appends context insights to existing warning.
         """
         self.logger.info("Starting context awareness analysis")
         
@@ -39,19 +41,22 @@ class ContextAwareness(RAGCapableAgent):
             
             if context_analysis.get('cancel_pipeline', False):
                 self.logger.info("Change justified by broader context, cancelling pipeline")
+                self.cr_logger.info(f"[{self.name}] Change justified by context - cancelling pipeline")
                 return PipelineResult.CANCEL, None
             
-            # Enhance warning with context information
+            # Enhance warning with context information using ADDITIVE approach
             enhanced_warning = self._enhance_warning_with_context(
                 context.current_warning, 
                 context_analysis,
                 len(related_files)
             )
             
+            self.cr_logger.info(f"[{self.name}] Added context insights from {len(related_files)} related files")
             return PipelineResult.CONTINUE, enhanced_warning
             
         except Exception as e:
             self.logger.error(f"Context awareness analysis failed: {str(e)}")
+            self.cr_logger.error(f"[{self.name}] Context analysis failed: {str(e)}")
             # On error, continue with original warning
             return PipelineResult.CONTINUE, context.current_warning
     
@@ -62,6 +67,9 @@ class ContextAwareness(RAGCapableAgent):
             
             # Prepare related files context
             files_context = self._format_related_files(related_files)
+            
+            # Get current warning description as string
+            current_description = " | ".join(context.current_warning.description)
             
             messages = [
                 {
@@ -79,7 +87,7 @@ New Version:
 ```
 
 Current Warning:
-{context.current_warning.title}: {context.current_warning.description}
+{context.current_warning.title}: {current_description}
 
 Related Files in Project:
 {files_context}
@@ -95,8 +103,10 @@ Respond with JSON:
     "cancel_pipeline": true/false,
     "context_insights": "What the broader context reveals",
     "justification": "Why the change might be justified (if applicable)",
-    "enhanced_description": "Enhanced warning description with context",
-    "architectural_notes": "Relevant architectural observations"
+    "additional_context": "Additional warning description with context",
+    "architectural_notes": "Relevant architectural observations",
+    "new_suggestions": ["context-based suggestion1", "suggestion2"],
+    "additional_files": ["file1.py", "file2.py"]
 }}"""
                 }
             ]
@@ -108,6 +118,7 @@ Respond with JSON:
                 max_tokens=1000
             )
             
+            self._log_llm_output(self.name, response.content[0].text)
             return self._parse_context_analysis(response.content[0].text)
             
         except Exception as e:
@@ -159,36 +170,52 @@ File #{i}: {file.path}
             return {
                 "cancel_pipeline": False,
                 "context_insights": response[:500] if response else "Analysis failed",
-                "enhanced_description": ""
+                "additional_context": ""
             }
     
     def _enhance_warning_with_context(self, warning: WarningMessage, analysis: dict, file_count: int) -> WarningMessage:
-        """Enhance the warning message with context insights."""
-        # Create a copy of the warning to avoid mutating the original
-        enhanced_warning = WarningMessage(
-            title=warning.title,
-            severity=warning.severity,
-            description=analysis.get('enhanced_description', warning.description) or warning.description,
-            suggestions=warning.suggestions.copy(),
-            affected_files=warning.affected_files.copy(),
-            confidence=warning.confidence,
-            metadata=warning.metadata.copy()
-        )
+        """Enhance the warning message with context insights using ADDITIVE approach."""
+        # ADDITIVE APPROACH: Append to existing lists, don't replace
         
-        # Add context metadata
-        enhanced_warning.metadata.update({
-            "context_analyzed": True,
-            "related_files_count": file_count,
-            "context_insights": analysis.get('context_insights', ''),
+        # Add context-enhanced description
+        if analysis.get('additional_context'):
+            warning.description.append(f"Context: {analysis['additional_context']}")
+        
+        if analysis.get('context_insights'):
+            warning.description.append(f"Broader insights: {analysis['context_insights']}")
+        
+        # Add context-based suggestions
+        new_suggestions = analysis.get('new_suggestions', [])
+        if new_suggestions:
+            warning.suggestions.extend(new_suggestions)
+        
+        # Add architectural justification as suggestion if available
+        if analysis.get('justification'):
+            warning.suggestions.append(f"Architectural context: {analysis['justification']}")
+        
+        # Add additional affected files if discovered
+        additional_files = analysis.get('additional_files', [])
+        if additional_files:
+            for file_path in additional_files:
+                if file_path not in warning.affected_files:
+                    warning.affected_files.append(file_path)
+        
+        # Add agent analysis using helper method
+        warning.add_agent_analysis(self.name, {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "reasoning": analysis.get('context_insights', ''),
+            "confidence_impact": 0.1,  # Context slightly increases confidence
+            "related_files_analyzed": file_count,
             "architectural_notes": analysis.get('architectural_notes', ''),
-            "agent": "ContextAwareness"
+            "justification": analysis.get('justification', '')
         })
         
-        # Add context-based suggestions if available
-        if analysis.get('justification'):
-            enhanced_warning.suggestions.append(f"Context: {analysis['justification']}")
+        # Slightly increase confidence since we have more context
+        if file_count > 0:
+            warning.confidence = min(1.0, warning.confidence + 0.1)
         
-        return enhanced_warning
+        self.cr_logger.info(f"[{self.name}] Enhanced warning with context from {file_count} files")
+        return warning
     
     def _build_system_prompt(self) -> str:
         """Build the system prompt from the JSON configuration."""

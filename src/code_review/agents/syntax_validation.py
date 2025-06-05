@@ -6,6 +6,7 @@
 
 from typing import Optional, Dict, Any
 import json
+from datetime import datetime
 from anthropic import Anthropic
 
 from .base.mcp_agent import MCPCapableAgent
@@ -48,9 +49,17 @@ class SyntaxValidation(MCPCapableAgent):
             
         except Exception as e:
             self.logger.error(f"Syntax validation failed: {str(e)}")
-            # On error, continue with original warning
+            # On error, continue with original warning but add error info
             if context.current_warning:
-                context.current_warning.metadata["syntax_check_error"] = str(e)
+                # Use additive approach for error metadata
+                context.current_warning.add_agent_analysis(
+                    agent_name="SyntaxValidation",
+                    analysis_data={
+                        "description": "Syntax analysis failed due to an error",
+                        "suggestions": ["Manual syntax review recommended due to analysis failure"],
+                        "metadata": {"error": str(e), "status": "failed"}
+                    }
+                )
             return PipelineResult.CONTINUE, context.current_warning
     
     def _perform_syntax_analysis(self, context: AgentContext, doc_info: str) -> dict:
@@ -141,33 +150,33 @@ Respond with JSON:
     
     def _enhance_warning_with_syntax(self, warning: WarningMessage, analysis: dict, doc_consulted: bool) -> WarningMessage:
         """Enhance the warning message with syntax analysis findings."""
-        # Create a copy of the warning to avoid mutating the original
-        enhanced_warning = WarningMessage(
-            title=warning.title,
-            severity=self._adjust_severity(warning.severity, analysis.get('severity_adjustment', 'none')),
-            description=self._enhance_description_with_syntax(warning.description, analysis),
-            suggestions=warning.suggestions.copy(),
-            affected_files=warning.affected_files.copy(),
-            confidence=warning.confidence,
-            metadata=warning.metadata.copy()
+        # Add syntax analysis description
+        syntax_description = self._build_syntax_description(analysis)
+        
+        # Get additional suggestions from analysis
+        additional_suggestions = analysis.get('additional_suggestions', [])
+        if not additional_suggestions:
+            additional_suggestions = ["Follow current syntax standards and best practices"]
+        
+        # Add syntax findings to the existing warning
+        enhanced_warning = warning.add_agent_analysis(
+            agent_name="SyntaxValidation",
+            analysis_data={
+                "description": syntax_description,
+                "suggestions": additional_suggestions,
+                "metadata": {
+                    "syntax_checked": True,
+                    "documentation_consulted": doc_consulted,
+                    "syntax_errors_found": len(analysis.get('syntax_errors', [])),
+                    "deprecated_patterns_found": len(analysis.get('deprecated_patterns', [])),
+                    "best_practice_violations": len(analysis.get('best_practice_violations', [])),
+                    "analysis_timestamp": datetime.now().isoformat()
+                }
+            }
         )
         
-        # Add syntax-specific suggestions
-        additional_suggestions = analysis.get('additional_suggestions', [])
-        enhanced_warning.suggestions.extend(additional_suggestions)
-        
-        # Add default syntax suggestion
-        enhanced_warning.suggestions.append("Follow current syntax standards and best practices")
-        
-        # Update metadata
-        enhanced_warning.metadata.update({
-            "syntax_checked": True,
-            "documentation_consulted": doc_consulted,
-            "syntax_errors_found": len(analysis.get('syntax_errors', [])),
-            "deprecated_patterns_found": len(analysis.get('deprecated_patterns', [])),
-            "best_practice_violations": len(analysis.get('best_practice_violations', [])),
-            "agent": "SyntaxCheck"
-        })
+        # Adjust severity if needed
+        enhanced_warning.severity = self._adjust_severity(warning.severity, analysis.get('severity_adjustment', 'none'))
         
         return enhanced_warning
     
@@ -188,6 +197,27 @@ Respond with JSON:
             pass
         
         return current_severity
+    
+    def _build_syntax_description(self, analysis: dict) -> str:
+        """Build description from syntax analysis findings."""
+        syntax_issues = []
+        
+        syntax_errors = analysis.get('syntax_errors', [])
+        if syntax_errors:
+            syntax_issues.append(f"Syntax errors found: {', '.join(syntax_errors[:3])}")
+        
+        deprecated = analysis.get('deprecated_patterns', [])
+        if deprecated:
+            syntax_issues.append(f"Deprecated patterns: {', '.join(deprecated[:2])}")
+        
+        violations = analysis.get('best_practice_violations', [])
+        if violations:
+            syntax_issues.append(f"Best practice violations: {', '.join(violations[:2])}")
+        
+        if syntax_issues:
+            return f"Syntax analysis findings: {' | '.join(syntax_issues)}"
+        
+        return "Code follows current syntax standards and best practices"
     
     def _enhance_description_with_syntax(self, original_description: str, analysis: dict) -> str:
         """Enhance the warning description with syntax findings."""

@@ -31,7 +31,7 @@ class CodeReviewPipeline:
             project_id: ID of the project being analyzed
             
         Returns:
-            PipelineOutput with notification, warning, and solution or None if cancelled
+            PipelineOutput with notification, warning, solution AND full context or None if cancelled
         """
         # Create and validate context
         context = self.context_manager.create_context_from_changes(changes, project_id)
@@ -97,12 +97,17 @@ class CodeReviewPipeline:
         cr_logger.info("=" * 80)
         
         if context.current_warning:
+            # Include ALL context data for RubberDuck
             output = PipelineOutput(
                 notification=notification,
                 warning=context.current_warning,
-                solution=solution
+                solution=solution,
+                old_version=context.old_version,
+                new_version=context.new_version,
+                file_path=context.file_path,
+                project_id=context.project_id
             )
-            cr_logger.info(f"Pipeline successful - Generated complete output")
+            cr_logger.info(f"Pipeline successful - Generated complete output with full context")
             return output
         
         cr_logger.warning(f"Pipeline completed but no warning message was generated")

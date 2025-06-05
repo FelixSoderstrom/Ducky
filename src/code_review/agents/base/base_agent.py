@@ -24,13 +24,29 @@ class CodeReviewAgent(ABC):
             self.cr_logger.info(f"[{stage}] Warning State:")
             self.cr_logger.info(f"  ├─ Title: {warning.title}")
             self.cr_logger.info(f"  ├─ Severity: {warning.severity} (Confidence: {warning.confidence:.2f})")
-            self.cr_logger.info(f"  ├─ Description: {warning.description}")
+            
+            # Handle list-based description
+            if warning.description:
+                self.cr_logger.info(f"  ├─ Description ({len(warning.description)} parts):")
+                for i, desc in enumerate(warning.description[:3], 1):
+                    self.cr_logger.info(f"  │   {i}. {desc}")
+                if len(warning.description) > 3:
+                    self.cr_logger.info(f"  │   ... and {len(warning.description) - 3} more")
+            else:
+                self.cr_logger.info(f"  ├─ Description: (empty)")
+            
+            # Handle list-based suggestions
             self.cr_logger.info(f"  ├─ Suggestions: {len(warning.suggestions)} items")
             for i, suggestion in enumerate(warning.suggestions[:3], 1):  # Show first 3
                 self.cr_logger.info(f"  │   {i}. {suggestion}")
             if len(warning.suggestions) > 3:
                 self.cr_logger.info(f"  │   ... and {len(warning.suggestions) - 3} more")
-            self.cr_logger.info(f"  └─ Metadata: {list(warning.metadata.keys())}")
+            
+            # Handle affected files
+            self.cr_logger.info(f"  ├─ Affected Files: {warning.affected_files}")
+            
+            # Handle list-based metadata
+            self.cr_logger.info(f"  └─ Agent Contributions: {warning.get_agent_contributions()}")
         else:
             self.cr_logger.info(f"[{stage}] No warning message")
         

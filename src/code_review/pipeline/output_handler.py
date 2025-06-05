@@ -17,33 +17,42 @@ class OutputHandler:
         Handle the final pipeline output and return it as a dictionary.
         
         Args:
-            output: The PipelineOutput containing notification, warning, and solution
+            output: The PipelineOutput containing notification, warning, solution AND context
             
         Returns:
-            Dictionary containing the pipeline response data
+            Dictionary containing the complete pipeline response data for RubberDuck
         """
         logger.info(f"Notification: {output.notification}")
         logger.info(f"Warning: {output.warning.title}")
         logger.info(f"Solution: {output.solution}")
+        logger.info(f"File: {output.file_path}")
+        logger.info(f"Project ID: {output.project_id}")
         
         # Also log to console for immediate feedback during development
         logger.debug(f"Pipeline output - Notification: {output.notification}")
         logger.debug(f"Pipeline output - Warning: {output.warning.title}")
         logger.debug(f"Pipeline output - Solution: {output.solution}")
         
-        # Convert to dictionary for notification system
+        # Convert to dictionary for notification system - NOW WITH FULL CONTEXT
         response = {
             "notification": output.notification,
             "warning": {
                 "title": output.warning.title,
                 "severity": output.warning.severity,
-                "description": output.warning.description,
+                "description": output.warning.description,  # Now a list
                 "suggestions": output.warning.suggestions,
                 "affected_files": output.warning.affected_files,
                 "confidence": output.warning.confidence,
-                "metadata": output.warning.metadata
+                "metadata": output.warning.metadata,  # Now a list
+                "full_description": output.warning.get_full_description(),
+                "agent_contributions": output.warning.get_agent_contributions()
             },
-            "solution": output.solution
+            "solution": output.solution,
+            # NEW: Full context for RubberDuck conversations and RAG
+            "old_version": output.old_version,
+            "new_version": output.new_version,
+            "file_path": output.file_path,
+            "project_id": output.project_id
         }
         
         return response 

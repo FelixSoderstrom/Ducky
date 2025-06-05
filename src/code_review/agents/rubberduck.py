@@ -22,28 +22,50 @@ class RubberDuck(RAGCapableAgent):
         Initialize the conversation with pipeline data from code review.
         
         Args:
-            pipeline_data: Dictionary containing notification, warning, solution, etc.
+            pipeline_data: Dictionary containing notification, warning, solution, old_version, 
+                          new_version, file_path, project_id for full context
         """
         self.pipeline_data = pipeline_data
         self.conversation_history = []
         
-        # Create initial context message for the conversation
-        warning_message = pipeline_data.get("warning", "")
+        # Extract warning data - now it's a dictionary structure
+        warning_data = pipeline_data.get("warning", {})
+        warning_title = warning_data.get("title", "")
+        warning_descriptions = warning_data.get("description", [])
+        warning_suggestions = warning_data.get("suggestions", [])
+        agent_contributions = warning_data.get("agent_contributions", [])
+        
+        # Extract other context
         notification_text = pipeline_data.get("notification", "")
         solution = pipeline_data.get("solution", "")
+        file_path = pipeline_data.get("file_path", "")
+        project_id = pipeline_data.get("project_id", "")
+        
+        # NEW: We now have access to the actual code!
+        old_version = pipeline_data.get("old_version", "")
+        new_version = pipeline_data.get("new_version", "")
         
         initial_context = f"""
 Code Review Context:
-- Warning: {warning_message}
-- Notification: {notification_text}
-- Suggested Solution: {solution}
+- File: {file_path}
+- Project ID: {project_id}
+- Warning Title: {warning_title}
+- Warning Details: {' | '.join(warning_descriptions)}
+- Suggestions: {', '.join(warning_suggestions[:3])}
+- Agents Involved: {', '.join(agent_contributions)}
+- Notification Sent: {notification_text}
+- Solution Available: {'Yes' if solution else 'No'}
+- Code Context: Old version ({len(old_version)} chars) vs New version ({len(new_version)} chars)
 
 The developer has chosen to discuss this code review feedback.
 """
         
-        self.logger.info("RubberDuck conversation initialized with pipeline data")
+        self.logger.info("RubberDuck conversation initialized with full pipeline data")
         self.cr_logger.info(f"[{self.name}] Conversation initialized")
-        self.cr_logger.info(f"[{self.name}] Warning: {warning_message[:100]}...")
+        self.cr_logger.info(f"[{self.name}] File: {file_path}")
+        self.cr_logger.info(f"[{self.name}] Warning: {warning_title}")
+        self.cr_logger.info(f"[{self.name}] Agents: {', '.join(agent_contributions)}")
+        self.cr_logger.info(f"[{self.name}] Full context available for RAG")
         
     async def chat(self, user_message: str) -> str:
         """
@@ -116,23 +138,50 @@ The developer has chosen to discuss this code review feedback.
     
     def _build_initial_context_message(self) -> str:
         """Build the initial context message with pipeline data."""
-        warning_message = self.pipeline_data.get("warning", "No warning provided")
-        notification_text = self.pipeline_data.get("notification", "No notification provided")
-        solution = self.pipeline_data.get("solution", "No solution provided")
+        # Extract warning data properly
+        warning_data = self.pipeline_data.get("warning", {})
+        warning_title = warning_data.get("title", "No title")
+        warning_descriptions = warning_data.get("description", [])
+        warning_suggestions = warning_data.get("suggestions", [])
+        
+        # Combine all warning descriptions from different agents
+        full_warning_context = f"Title: {warning_title}\n"
+        if warning_descriptions:
+            full_warning_context += "Analysis:\n" + "\n".join(f"- {desc}" for desc in warning_descriptions)
+        if warning_suggestions:
+            full_warning_context += "\nSuggestions:\n" + "\n".join(f"- {sugg}" for sugg in warning_suggestions)
+        
+        notification_text = self.pipeline_data.get("notification", "No notification")
+        solution = self.pipeline_data.get("solution", "No solution")
+        file_path = self.pipeline_data.get("file_path", "Unknown file")
+        
+        # NEW: Include code context for better conversations
+        old_version = self.pipeline_data.get("old_version", "")
+        new_version = self.pipeline_data.get("new_version", "")
         
         return f"""I'm connecting you with a developer who received a code review notification and wants to discuss it.
 
-Here's the code review context:
+Here's the complete code review context:
 
-Warning Details: {warning_message}
+File: {file_path}
+
+Warning Details:
+{full_warning_context}
 
 Notification Sent: {notification_text}
 
 Suggested Solution: {solution}
 
+Code Context:
+OLD VERSION:
+{old_version[:500]}{'...' if len(old_version) > 500 else ''}
+
+NEW VERSION:
+{new_version[:500]}{'...' if len(new_version) > 500 else ''}
+
 The developer's first message: {self.conversation_history[0]['content']}
 
-Please help them understand the issue and how to fix it."""
+Please help them understand the issue and how to fix it. You have access to the full code context and can reference specific lines or patterns."""
     
     def get_conversation_summary(self) -> Dict[str, Any]:
         """Get a summary of the current conversation state."""
@@ -140,7 +189,9 @@ Please help them understand the issue and how to fix it."""
             "message_count": len(self.conversation_history),
             "pipeline_data_available": self.pipeline_data is not None,
             "last_user_message": self.conversation_history[-2]['content'] if len(self.conversation_history) >= 2 else None,
-            "last_ducky_response": self.conversation_history[-1]['content'] if len(self.conversation_history) >= 1 and self.conversation_history[-1]['role'] == 'assistant' else None
+            "last_ducky_response": self.conversation_history[-1]['content'] if len(self.conversation_history) >= 1 and self.conversation_history[-1]['role'] == 'assistant' else None,
+            "file_path": self.pipeline_data.get("file_path", "Unknown") if self.pipeline_data else "Unknown",
+            "project_id": self.pipeline_data.get("project_id", "Unknown") if self.pipeline_data else "Unknown"
         }
     
     def reset_conversation(self) -> None:
