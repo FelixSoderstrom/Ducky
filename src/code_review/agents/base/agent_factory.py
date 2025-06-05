@@ -33,4 +33,20 @@ class AgentFactory:
             SyntaxValidation(api_key),
             NotificationWriter(api_key),
             CodeWriter(api_key)
-        ] 
+        ]
+    
+    @staticmethod
+    def create_rubberduck(api_key: str):
+        """
+        Create a RubberDuck agent for conversational code review discussions.
+        
+        Args:
+            api_key: API key for LLM-powered agent
+            
+        Returns:
+            RubberDuck agent instance
+        """
+        # Import here to avoid circular imports
+        from ..rubberduck import RubberDuck
+        
+        return RubberDuck(api_key) 
