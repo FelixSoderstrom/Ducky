@@ -22,7 +22,7 @@ class WarningMessage:
     confidence: float = 0.0                           # CAN BE MODIFIED by any agent (0.0 to 1.0)
     metadata: List[Dict[str, Any]] = field(default_factory=list)  # APPEND ONLY - each agent adds their analysis
     
-    def add_agent_analysis(self, agent_name: str, analysis_data: Dict[str, Any]) -> None:
+    def add_agent_analysis(self, agent_name: str, analysis_data: Dict[str, Any]) -> 'WarningMessage':
         """Helper method to add agent-specific analysis to metadata."""
         self.metadata.append({
             "agent": agent_name,
@@ -31,6 +31,7 @@ class WarningMessage:
             "confidence_impact": analysis_data.get("confidence_impact", 0.0),
             **analysis_data
         })
+        return self
     
     def get_full_description(self) -> str:
         """Get concatenated description from all agents."""

@@ -123,11 +123,20 @@ Respond with JSON:
         """Parse LLM response to extract syntax analysis."""
         try:
             import re
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            # Try to find JSON block between triple backticks first
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response, re.DOTALL)
             if json_match:
-                response_data = json.loads(json_match.group())
+                json_text = json_match.group(1)
             else:
-                response_data = json.loads(response)
+                # Fallback: look for any JSON object
+                json_match = re.search(r'\{[^}]*(?:\{[^}]*\}[^}]*)*\}', response, re.DOTALL)
+                if json_match:
+                    json_text = json_match.group()
+                else:
+                    # Last resort: try to parse the whole response
+                    json_text = response.strip()
+            
+            response_data = json.loads(json_text)
             
             # Log key findings
             syntax_errors = response_data.get('syntax_errors', [])
@@ -142,6 +151,7 @@ Respond with JSON:
             
         except (json.JSONDecodeError, KeyError) as e:
             self.logger.warning(f"Failed to parse syntax analysis: {e}")
+            self.logger.debug(f"Raw response: {response[:500]}...")
             return {
                 "syntax_errors": [],
                 "recommendations": [response[:300] + "..." if len(response) > 300 else response],

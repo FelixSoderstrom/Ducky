@@ -28,8 +28,12 @@ class RAGCapable(Protocol):
         """Query all dismissed notifications from database."""
         ...
     
-    def query_project_files(self, project_id: int, exclude_path: str = None) -> List:
-        """Query files from the same project."""
+    def query_single_file(self, project_id: int, file_path: str):
+        """Query a single file by path with full content."""
+        ...
+    
+    def search_files_by_pattern(self, project_id: int, pattern: str, max_results: int = 10) -> List:
+        """Search for files matching a pattern (metadata only)."""
         ...
 
 

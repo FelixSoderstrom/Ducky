@@ -22,8 +22,8 @@ class RubberDuck(RAGCapableAgent):
         Initialize the conversation with pipeline data from code review.
         
         Args:
-            pipeline_data: Dictionary containing notification, warning, solution, old_version, 
-                          new_version, file_path, project_id for full context
+            pipeline_data: Dictionary containing notification, warning (WarningMessage), solution, 
+                          old_version, new_version, file_path, project_id for full context
         """
         self.pipeline_data = pipeline_data
         self.conversation_history = []
@@ -138,50 +138,53 @@ The developer has chosen to discuss this code review feedback.
     
     def _build_initial_context_message(self) -> str:
         """Build the initial context message with pipeline data."""
-        # Extract warning data properly
-        warning_data = self.pipeline_data.get("warning", {})
-        warning_title = warning_data.get("title", "No title")
-        warning_descriptions = warning_data.get("description", [])
-        warning_suggestions = warning_data.get("suggestions", [])
+        notification = self.pipeline_data.get("notification", "")
+        solution = self.pipeline_data.get(
+            "solution", "No solution has been provided during code review. Please provide it during conversation with the DEVELOPER."
+        )
+        path = self.pipeline_data.get("file_path", "Unknown")
+        reviewed_code = self.pipeline_data.get("new_version", "The reviewed code could not be retrieved.")
+        w = self.pipeline_data.get("warning", {})
+        title = w.get("title", "This code review has no title.")
+        severity = w.get("severity", "Unknown")
+        confidence = w.get("confidence", 0.0)
+        descriptions = w.get("description", [])
+        suggestions = w.get("suggestions", [])
+        files = w.get("affected_files", [])
+        reasoning = [data.get("reasoning", "") for data in self.pipeline_data.get("metadata", {})]
+
+        context = f"""
+The following code was reviewed by the CODE REVIEW TEAM:
+{reviewed_code}
+
+Brief description of the problem:
+{title}
+
+Comments made by the CODE REVIEW TEAM in their area of expertise:
+{' - '.join(descriptions)}
+
+This is the reasoning according to the CODE REVIEW TEAM:
+{' - '.join(reasoning)}
+
+The CODE REVIEW TEAM has suggested this COMPLETE SOLUTION:
+{solution}
+
+DUCKY should, by conversating, steer the DEVELOPER towards the COMPLETE SOLUTION by emphasizing the following suggestions:
+{', '.join(suggestions)}
+
+The following files were taken into consideration during the code review:
+{', '.join(files)}
+
+Additional information about the code review:
+- Code change reviewed in file: {path}
+- Project ID: {self.pipeline_data.get("project_id", "Unknown")}
+- Code review has declared a severity of: {severity}
+- Code review team has a confidence of: {confidence*100}%
+
+
+DUCKY is now being connected to the DEVELOPER.
+"""
         
-        # Combine all warning descriptions from different agents
-        full_warning_context = f"Title: {warning_title}\n"
-        if warning_descriptions:
-            full_warning_context += "Analysis:\n" + "\n".join(f"- {desc}" for desc in warning_descriptions)
-        if warning_suggestions:
-            full_warning_context += "\nSuggestions:\n" + "\n".join(f"- {sugg}" for sugg in warning_suggestions)
-        
-        notification_text = self.pipeline_data.get("notification", "No notification")
-        solution = self.pipeline_data.get("solution", "No solution")
-        file_path = self.pipeline_data.get("file_path", "Unknown file")
-        
-        # NEW: Include code context for better conversations
-        old_version = self.pipeline_data.get("old_version", "")
-        new_version = self.pipeline_data.get("new_version", "")
-        
-        return f"""I'm connecting you with a developer who received a code review notification and wants to discuss it.
-
-Here's the complete code review context:
-
-File: {file_path}
-
-Warning Details:
-{full_warning_context}
-
-Notification Sent: {notification_text}
-
-Suggested Solution: {solution}
-
-Code Context:
-OLD VERSION:
-{old_version[:500]}{'...' if len(old_version) > 500 else ''}
-
-NEW VERSION:
-{new_version[:500]}{'...' if len(new_version) > 500 else ''}
-
-The developer's first message: {self.conversation_history[0]['content']}
-
-Please help them understand the issue and how to fix it. You have access to the full code context and can reference specific lines or patterns."""
     
     def get_conversation_summary(self) -> Dict[str, Any]:
         """Get a summary of the current conversation state."""

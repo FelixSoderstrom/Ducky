@@ -54,7 +54,14 @@ def post_dismissal_from_pipeline_data(pipeline_data: Dict[str, Any]) -> bool:
         # Extract warning information
         warning_data = pipeline_data.get('warning', {})
         warning_title = warning_data.get('title', '')
-        warning_description = warning_data.get('description', '')
+        warning_descriptions = warning_data.get('description', [])
+        
+        # Handle new list-based description structure
+        if isinstance(warning_descriptions, list):
+            warning_description = ' | '.join(warning_descriptions)
+        else:
+            warning_description = str(warning_descriptions)  # Fallback for old format
+        
         warning_text = f"{warning_title}: {warning_description}" if warning_title and warning_description else warning_title or warning_description
         
         return post_dismissal(

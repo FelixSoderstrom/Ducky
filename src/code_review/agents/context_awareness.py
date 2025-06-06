@@ -33,11 +33,11 @@ class ContextAwareness(RAGCapableAgent):
             return PipelineResult.CONTINUE, context.current_warning
         
         try:
-            # Query related files from the project
-            related_files = self.query_project_files(context.project_id, context.file_path)
+            # Intelligent file exploration - start with discovering relevant files
+            relevant_files = self._discover_relevant_files(context)
             
             # Analyze context and determine if change is justified
-            context_analysis = self._analyze_broader_context(context, related_files)
+            context_analysis = self._analyze_broader_context(context, relevant_files)
             
             if context_analysis.get('cancel_pipeline', False):
                 self.logger.info("Change justified by broader context, cancelling pipeline")
@@ -48,10 +48,10 @@ class ContextAwareness(RAGCapableAgent):
             enhanced_warning = self._enhance_warning_with_context(
                 context.current_warning, 
                 context_analysis,
-                len(related_files)
+                len(relevant_files)
             )
             
-            self.cr_logger.info(f"[{self.name}] Added context insights from {len(related_files)} related files")
+            self.cr_logger.info(f"[{self.name}] Added context insights from {len(relevant_files)} related files")
             return PipelineResult.CONTINUE, enhanced_warning
             
         except Exception as e:
@@ -59,6 +59,44 @@ class ContextAwareness(RAGCapableAgent):
             self.cr_logger.error(f"[{self.name}] Context analysis failed: {str(e)}")
             # On error, continue with original warning
             return PipelineResult.CONTINUE, context.current_warning
+    
+    def _discover_relevant_files(self, context: AgentContext, max_files: int = 5) -> List[File]:
+        """
+        Intelligently discover and retrieve relevant files with full content.
+        
+        Args:
+            context: Current analysis context
+            max_files: Maximum number of files to explore
+            
+        Returns:
+            List of File objects with full content
+        """
+        explored_files = []
+        current_file_dir = "/".join(context.file_path.split("/")[:-1])  # Get directory
+        
+        # Strategy 1: Look for files in same directory
+        same_dir_files = self.search_files_by_pattern(context.project_id, current_file_dir)
+        same_dir_files = [f for f in same_dir_files if f.path != context.file_path and not f.is_dir]
+        
+        # Strategy 2: Look for files with similar names (e.g., calculator.py, calculator_utils.py)
+        base_name = context.file_path.split("/")[-1].split(".")[0]  # Extract base filename
+        similar_name_files = self.search_files_by_pattern(context.project_id, base_name)
+        similar_name_files = [f for f in similar_name_files if f.path != context.file_path and not f.is_dir]
+        
+        # Combine and prioritize (same dir first, then similar names)
+        candidate_files = []
+        candidate_files.extend(same_dir_files[:3])  # Up to 3 from same directory
+        candidate_files.extend([f for f in similar_name_files if f not in candidate_files][:2])  # Up to 2 more with similar names
+        
+        # Get full content for the most promising candidates
+        for file_metadata in candidate_files[:max_files]:
+            full_file = self.query_single_file(context.project_id, file_metadata.path)
+            if full_file and full_file.content:  # Only include files with content
+                explored_files.append(full_file)
+                self.logger.info(f"RAG: Retrieved full content for {file_metadata.path} ({len(full_file.content)} chars)")
+        
+        self.logger.info(f"RAG: Explored {len(explored_files)} files with full content")
+        return explored_files
     
     def _analyze_broader_context(self, context: AgentContext, related_files: List[File]) -> dict:
         """Use LLM to analyze the broader codebase context."""
@@ -125,30 +163,30 @@ Respond with JSON:
             self.logger.error(f"LLM call failed in context analysis: {e}")
             return {"cancel_pipeline": False, "context_insights": "Context analysis failed"}
     
-    def _format_related_files(self, files: List[File], max_files: int = 20) -> str:
-        """Format related files for LLM context (limit for token efficiency)."""
+    def _format_related_files(self, files: List[File]) -> str:
+        """Format related files for LLM context with full content."""
         if not files:
             return "No related files found in project."
         
-        # Sort by relevance (recently modified first, then by name)
-        sorted_files = sorted(files, key=lambda f: (f.last_edit or f.created_at), reverse=True)
-        
         formatted = []
-        for i, file in enumerate(sorted_files[:max_files], 1):
-            # Include a snippet of file content if available
-            content_preview = ""
+        for i, file in enumerate(files, 1):
+            # Include FULL file content since we've already limited the number of files
+            content_section = ""
             if file.content:
-                content_preview = file.content[:300] + "..." if len(file.content) > 300 else file.content
+                content_section = f"""
+Full Content:
+```
+{file.content}
+```"""
+            else:
+                content_section = "\nContent: (No content available)"
             
             formatted.append(f"""
-File #{i}: {file.path}
+== File #{i}: {file.path} ==
 - Last modified: {file.last_edit or file.created_at}
-- Is directory: {file.is_dir}
-- Content preview: {content_preview}
+- Size: {len(file.content) if file.content else 0} characters
+{content_section}
 """)
-        
-        if len(files) > max_files:
-            formatted.append(f"\n... and {len(files) - max_files} more files")
         
         return "\n".join(formatted)
     
