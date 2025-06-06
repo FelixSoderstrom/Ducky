@@ -22,7 +22,7 @@ class AgentFactory:
         from ..initial_assessment import InitialAssessment
         from ..notification_assessment import NotificationAssessment  
         from ..context_awareness import ContextAwareness
-        from ..syntax_validation import SyntaxValidation
+        from ..documentation_validator import DocumentationValidator
         from ..notification_writer import NotificationWriter
         from ..code_writer import CodeWriter
         
@@ -30,7 +30,7 @@ class AgentFactory:
             InitialAssessment(api_key),
             NotificationAssessment(api_key),
             ContextAwareness(api_key),
-            SyntaxValidation(api_key),
+            DocumentationValidator(api_key),
             NotificationWriter(api_key),
             CodeWriter(api_key)
         ]

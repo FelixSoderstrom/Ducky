@@ -13,11 +13,11 @@ from .base.mcp_agent import MCPCapableAgent
 from ..models.pipeline_models import PipelineResult, WarningMessage, AgentContext
 
 
-class SyntaxValidation(MCPCapableAgent):
+class DocumentationValidator(MCPCapableAgent):
     """Agent that checks syntax and best practices using documentation."""
     
     def __init__(self, api_key: str):
-        super().__init__("SyntaxValidation", "syntax_check")
+        super().__init__("DocumentationValidator", "syntax_check")
         self.client = Anthropic(api_key=api_key)
         self.model = "claude-3-5-sonnet-20241022"
     
@@ -53,7 +53,7 @@ class SyntaxValidation(MCPCapableAgent):
             if context.current_warning:
                 # Use additive approach for error metadata
                 context.current_warning.add_agent_analysis(
-                    agent_name="SyntaxValidation",
+                    agent_name="DocumentationValidator",
                     analysis_data={
                         "description": "Syntax analysis failed due to an error",
                         "suggestions": ["Manual syntax review recommended due to analysis failure"],
@@ -170,7 +170,7 @@ Respond with JSON:
         
         # Add syntax findings to the existing warning
         enhanced_warning = warning.add_agent_analysis(
-            agent_name="SyntaxValidation",
+            agent_name="DocumentationValidator",
             analysis_data={
                 "description": syntax_description,
                 "suggestions": additional_suggestions,
