@@ -10,6 +10,7 @@ from ..code_review.agents.rubberduck import RubberDuck
 from ..ui.components.chat_window import ChatWindow
 from ..database.session import get_db
 from ..database.models.projects import Project
+from .chat_state_service import get_chat_state_service
 
 logger = logging.getLogger("ducky.services.chat_service")
 
@@ -29,6 +30,7 @@ class ChatService:
         self.chat_window: Optional[ChatWindow] = None
         self.notification_id: Optional[str] = None
         self._chat_active = False
+        self.chat_state_service = get_chat_state_service()
         
     async def start_chat(self, pipeline_data: Dict[str, Any], notification_id: str) -> bool:
         """
@@ -56,7 +58,9 @@ class ChatService:
             await self._send_initial_greeting()
             
             self._chat_active = True
-            logger.info("Chat session started successfully")
+            # Update global chat state
+            self.chat_state_service.set_chat_active(notification_id)
+            logger.info(f"Chat session started successfully - global chat state set to active for notification {notification_id}")
             return True
             
         except Exception as e:
@@ -203,8 +207,11 @@ class ChatService:
             self.rubberduck_agent = None
         
         self._chat_active = False
+        # Update global chat state
+        old_notification_id = self.notification_id
+        self.chat_state_service.set_chat_inactive()
         self.notification_id = None
-        logger.info("Chat resources cleaned up")
+        logger.info(f"Chat resources cleaned up - global chat state set to inactive (was notification {old_notification_id})")
     
     def _on_message_send(self, message: str) -> None:
         """Handle message send from chat window (async task scheduling)."""

@@ -91,13 +91,21 @@ class ChangeScanner:
                     except Exception as e:
                         self.logger.error(f"Failed to update database: {str(e)}")
                     
+                    # Log pipeline state before attempting to start
+                    pipeline_status = self.pipeline_coordinator.get_pipeline_status()
+                    self.logger.info(f"Pipeline state before execution attempt: chat_active={pipeline_status['chat_active']}, "
+                                   f"active_notification={pipeline_status['active_chat_notification_id']}, "
+                                   f"running_pipelines={pipeline_status['running_count']}/{pipeline_status['max_concurrent']}")
+                    
                     # Try to start pipeline if capacity allows
                     pipeline_started = await self.pipeline_coordinator.execute_if_available(
                         changes, project_id, app
                     )
                     
                     if not pipeline_started:
-                        self.logger.info("Changes saved to database but pipeline execution skipped.")
+                        self.logger.info("Changes saved to database but pipeline execution SKIPPED due to blocking conditions.")
+                    else:
+                        self.logger.info("Pipeline execution STARTED successfully.")
                 else:
                     self.logger.debug("No changes detected.")
                 
