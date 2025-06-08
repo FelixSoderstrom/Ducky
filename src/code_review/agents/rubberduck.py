@@ -184,6 +184,7 @@ Additional information about the code review:
 
 DUCKY is now being connected to the DEVELOPER.
 """
+        return context
         
     
     def get_conversation_summary(self) -> Dict[str, Any]:

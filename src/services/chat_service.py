@@ -76,9 +76,9 @@ class ChatService:
             return
         
         try:
-            # Show typing indicator (thread-safe UI update)
+            # Show typing indicator (direct UI update since we're on main thread)
             if self.chat_window:
-                self.ui_app.root.after(0, self.chat_window.show_typing_indicator)
+                self.chat_window.show_typing_indicator()
             
             logger.info(f"Processing user message: {user_message[:50]}...")
             
@@ -87,10 +87,10 @@ class ChatService:
             response = await self.rubberduck_agent.chat(user_message)
             logger.info(f"RubberDuck response received: {response[:50]}...")
             
-            # Hide typing indicator and add Ducky's response (thread-safe UI updates)
+            # Hide typing indicator and add Ducky's response (direct UI updates)
             if self.chat_window:
-                self.ui_app.root.after(0, self.chat_window.hide_typing_indicator)
-                self.ui_app.root.after(0, lambda: self.chat_window.add_message('ducky', response))
+                self.chat_window.hide_typing_indicator()
+                self.chat_window.add_message('ducky', response)
             
             logger.info("Message processing completed successfully")
             
@@ -99,13 +99,13 @@ class ChatService:
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             
-            # Hide typing indicator and show error message (thread-safe UI updates)
+            # Hide typing indicator and show error message (direct UI updates)
             if self.chat_window:
-                self.ui_app.root.after(0, self.chat_window.hide_typing_indicator)
-                self.ui_app.root.after(0, lambda: self.chat_window.add_message(
+                self.chat_window.hide_typing_indicator()
+                self.chat_window.add_message(
                     'ducky', 
                     "I'm having trouble processing your message right now. Could you try again?"
-                ))
+                )
     
     def close_chat(self) -> None:
         """Close the chat session and cleanup resources."""
@@ -207,40 +207,23 @@ class ChatService:
         logger.info("Chat resources cleaned up")
     
     def _on_message_send(self, message: str) -> None:
-        """Handle message send from chat window (sync wrapper for async)."""
-        # Use tkinter's after method to safely run async operation
+        """Handle message send from chat window (async task scheduling)."""
         logger.info(f"Message send triggered: {message[:50]}...")
         
-        def run_async_message():
-            """Wrapper to run async send_message in a thread-safe way."""
-            try:
-                # Create new event loop for this thread
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-                # Run the async operation
-                loop.run_until_complete(self.send_message(message))
-                
-            except Exception as e:
-                logger.error(f"Error in async message handler: {str(e)}")
-                # Show error in UI
-                if self.chat_window:
-                    self.chat_window.hide_typing_indicator()
-                    self.chat_window.add_message(
-                        'ducky', 
-                        "I'm having trouble processing your message right now. Could you try again?"
-                    )
-            finally:
-                # Clean up the loop
-                try:
-                    loop.close()
-                except:
-                    pass
-        
-        # Schedule the async operation to run in background thread
-        import threading
-        thread = threading.Thread(target=run_async_message, daemon=True)
-        thread.start()
+        try:
+            # Schedule async operation on the existing event loop (main thread)
+            loop = asyncio.get_event_loop()
+            loop.create_task(self.send_message(message))
+            
+        except Exception as e:
+            logger.error(f"Error scheduling async message handler: {str(e)}")
+            # Show error in UI (we're on main thread, so direct UI updates are safe)
+            if self.chat_window:
+                self.chat_window.hide_typing_indicator()
+                self.chat_window.add_message(
+                    'ducky', 
+                    "I'm having trouble processing your message right now. Could you try again?"
+                )
     
     def _on_chat_close(self) -> None:
         """Handle chat window close button."""
