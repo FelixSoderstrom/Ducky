@@ -152,8 +152,9 @@ The developer has chosen to discuss this code review feedback.
         """Build the messages array for the Anthropic API call."""
         messages = []
         
-        # Add initial context if this is the first exchange
-        if len(self.conversation_history) == 1:  # Only user's first message
+        # Add initial context if this is the first real user message (after initial description)
+        # We check for len == 3 because: [0] = "describe issue", [1] = description, [2] = first user message
+        if len(self.conversation_history) == 3:  # First real user message after initial description
             context_message = self._build_initial_context_message()
             messages.append({
                 "role": "user",
@@ -233,6 +234,158 @@ DUCKY is now being connected to the DEVELOPER.
         self.logger.info("Conversation history reset")
         self.cr_logger.info(f"[{self.name}] Conversation reset")
     
+    async def get_initial_description(self) -> str:
+        """
+        Get an initial description of the code review issue to start the conversation.
+        This is called automatically when chat opens to immediately explain the problem.
+        
+        Returns:
+            Ducky's initial description of the code review issue
+        """
+        if not self.pipeline_data:
+            return "I need to be initialized with pipeline data before I can describe the issue."
+        
+        try:
+            self.logger.info("Generating initial problem description")
+            self.cr_logger.info(f"[{self.name}] Generating initial description")
+            
+            # Build the context message with instruction to describe the problem
+            context_message = self._build_initial_context_message()
+            context_with_instruction = context_message + "\n\nPlease describe the problem briefly in one sentence."
+            
+            # Create the messages for API call
+            messages = [{
+                "role": "user",
+                "content": context_with_instruction
+            }]
+            
+            # Call Claude API
+            response = self.client.messages.create(
+                model=self.model,
+                system=self.system_prompt,
+                messages=messages,
+                tools=self.tools,
+                max_tokens=1000
+            )
+            
+            # Check if any content block contains tool use
+            has_tool_calls = any(
+                hasattr(block, 'type') and block.type == "tool_use" 
+                for block in response.content
+            )
+            
+            if has_tool_calls:
+                # Handle tool calls if any (though unlikely for initial description)
+                return await self._handle_initial_tool_calls(response, messages)
+            else:
+                # Regular text response - this is the expected path
+                description = response.content[0].text
+                
+                # Store this initial exchange in conversation history
+                # The context message acts as the "user" question
+                self.conversation_history.append({
+                    "role": "user",
+                    "content": "Please describe the code review issue."
+                })
+                
+                # Ducky's description is the response
+                self.conversation_history.append({
+                    "role": "assistant",
+                    "content": description
+                })
+                
+                self.logger.info(f"Generated initial description: {description[:50]}...")
+                self.cr_logger.info(f"[{self.name}] Initial description: {description}")
+                
+                return description
+                
+        except Exception as e:
+            self.logger.error(f"Failed to generate initial description: {str(e)}")
+            self.cr_logger.error(f"[{self.name}] Initial description error: {str(e)}")
+            return "I'm having trouble analyzing the code review issue right now. Let me know what you'd like to discuss!"
+    
+    async def _handle_initial_tool_calls(self, response, messages) -> str:
+        """Handle tool calls during initial description generation."""
+        # This is similar to _handle_tool_calls but simplified for initial description
+        try:
+            # Extract text and tool calls from response
+            text_parts = []
+            tool_calls = []
+            
+            for content_block in response.content:
+                if hasattr(content_block, 'type'):
+                    if content_block.type == "text":
+                        text_parts.append(content_block.text)
+                    elif content_block.type == "tool_use":
+                        tool_calls.append(content_block)
+            
+            # Build assistant message with tool calls
+            assistant_message = {
+                "role": "assistant",
+                "content": []
+            }
+            
+            for text in text_parts:
+                assistant_message["content"].append({"type": "text", "text": text})
+            
+            for tool_call in tool_calls:
+                assistant_message["content"].append({
+                    "type": "tool_use",
+                    "id": tool_call.id,
+                    "name": tool_call.name,
+                    "input": tool_call.input
+                })
+            
+            messages.append(assistant_message)
+            
+            # Process tool calls
+            for tool_call in tool_calls:
+                if tool_call.name == "query_file":
+                    file_path = tool_call.input.get("file_path")
+                    project_id = self.pipeline_data.get("project_id")
+                    
+                    file_obj = self.query_single_file(project_id, file_path)
+                    tool_result_content = f"File: {file_path}\nContent:\n{file_obj.content}" if file_obj and file_obj.content else f"File not found: {file_path}"
+                    
+                    messages.append({
+                        "role": "user",
+                        "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": tool_call.id,
+                            "content": tool_result_content
+                        }]
+                    })
+            
+            # Get final response
+            final_response = self.client.messages.create(
+                model=self.model,
+                system=self.system_prompt,
+                messages=messages,
+                tools=self.tools,
+                max_tokens=1000
+            )
+            
+            final_text = ""
+            for block in final_response.content:
+                if hasattr(block, 'type') and block.type == "text":
+                    final_text += block.text
+            
+            # Store in conversation history
+            self.conversation_history.append({
+                "role": "user",
+                "content": "Please describe the code review issue."
+            })
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": final_text
+            })
+            
+            return final_text
+            
+        except Exception as e:
+            self.logger.error(f"Initial tool call handling failed: {str(e)}")
+            return "I found some issues with your code that we should discuss. What would you like to know?"
+
     # Required method from CodeReviewAgent (not used in chat mode)
     def analyze(self, context: AgentContext) -> tuple[PipelineResult, Optional[WarningMessage]]:
         """Not used - RubberDuck operates in chat mode, not pipeline mode."""

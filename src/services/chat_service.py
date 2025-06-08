@@ -54,8 +54,8 @@ class ChatService:
             # Create and show chat window
             self._create_chat_window()
             
-            # Add initial greeting from Ducky
-            await self._send_initial_greeting()
+            # Get initial description from Ducky
+            await self._get_initial_description()
             
             self._chat_active = True
             # Update global chat state
@@ -159,13 +159,35 @@ class ChatService:
         self.chat_window.show()
         logger.info("Chat window created and displayed")
     
-    async def _send_initial_greeting(self) -> None:
-        """Send initial greeting message from Ducky."""
-        greeting = ("Hi! I'm Ducky, your code review assistant. I see you want to discuss "
-                   "the code review feedback. What would you like to know about it?")
-        
-        self.chat_window.add_message('ducky', greeting)
-        logger.info("Initial greeting sent")
+    async def _get_initial_description(self) -> None:
+        """Get initial problem description from Ducky to start the conversation."""
+        try:
+            # Show typing indicator while Ducky analyzes the issue
+            if self.chat_window:
+                self.chat_window.show_typing_indicator()
+            
+            logger.info("Getting initial description from RubberDuck...")
+            
+            # Get Ducky's initial description of the problem
+            description = await self.rubberduck_agent.get_initial_description()
+            
+            # Hide typing indicator and show Ducky's description
+            if self.chat_window:
+                self.chat_window.hide_typing_indicator()
+                self.chat_window.add_message('ducky', description)
+            
+            logger.info(f"Initial description received: {description[:50]}...")
+            
+        except Exception as e:
+            logger.error(f"Failed to get initial description: {str(e)}")
+            
+            # Hide typing indicator and show fallback message
+            if self.chat_window:
+                self.chat_window.hide_typing_indicator()
+                self.chat_window.add_message(
+                    'ducky', 
+                    "I found some issues with your code that we should discuss. What would you like to know?"
+                )
     
     def _get_api_key(self) -> Optional[str]:
         """Get Anthropic API key from database or environment."""
