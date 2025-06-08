@@ -17,6 +17,24 @@ class RubberDuck(RAGCapableAgent):
         self.conversation_history: List[Dict[str, str]] = []
         self.pipeline_data: Optional[Dict[str, Any]] = None
         
+        # Define tools for RAG capabilities
+        self.tools = [
+            {
+                "name": "query_file",
+                "description": "Query the current content of a specific file from the database. Use this when you need to see the latest version of a file to help the developer.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "The exact path of the file to retrieve"
+                        }
+                    },
+                    "required": ["file_path"]
+                }
+            }
+        ]
+        
     def initialize_conversation(self, pipeline_data: Dict[str, Any]) -> None:
         """
         Initialize the conversation with pipeline data from code review.
@@ -93,26 +111,37 @@ The developer has chosen to discuss this code review feedback.
             # Build messages for API call
             messages = self._build_conversation_messages()
             
-            # Call Claude API (synchronous)
+            # Call Claude API with tools
             response = self.client.messages.create(
                 model=self.model,
                 system=self.system_prompt,
                 messages=messages,
+                tools=self.tools,
                 max_tokens=1000
             )
             
-            ducky_response = response.content[0].text
+            # Check if any content block contains tool use
+            has_tool_calls = any(
+                hasattr(block, 'type') and block.type == "tool_use" 
+                for block in response.content
+            )
             
-            # Add Ducky's response to conversation history
-            self.conversation_history.append({
-                "role": "assistant", 
-                "content": ducky_response
-            })
-            
-            self.logger.info(f"Generated response: {ducky_response[:50]}...")
-            self.cr_logger.info(f"[{self.name}] Ducky: {ducky_response}")
-            
-            return ducky_response
+            if has_tool_calls:
+                return await self._handle_tool_calls(response, messages)
+            else:
+                # Regular text response
+                ducky_response = response.content[0].text
+                
+                # Add Ducky's response to conversation history
+                self.conversation_history.append({
+                    "role": "assistant", 
+                    "content": ducky_response
+                })
+                
+                self.logger.info(f"Generated response: {ducky_response[:50]}...")
+                self.cr_logger.info(f"[{self.name}] Ducky: {ducky_response}")
+                
+                return ducky_response
             
         except Exception as e:
             self.logger.error(f"Chat processing failed: {str(e)}")
@@ -172,11 +201,11 @@ The CODE REVIEW TEAM has suggested this COMPLETE SOLUTION:
 DUCKY should, by conversating, steer the DEVELOPER towards the COMPLETE SOLUTION by emphasizing the following suggestions:
 {', '.join(suggestions)}
 
-The following files were taken into consideration during the code review:
-{', '.join(files)}
+The following AFFECTED FILES were taken into consideration during the code review:
+{path}, {', '.join(files)}
 
 Additional information about the code review:
-- Code change reviewed in file: {path}
+- Path of the reviewed file: {path}
 - Project ID: {self.pipeline_data.get("project_id", "Unknown")}
 - Code review has declared a severity of: {severity}
 - Code review team has a confidence of: {confidence*100}%
@@ -208,3 +237,124 @@ DUCKY is now being connected to the DEVELOPER.
     def analyze(self, context: AgentContext) -> tuple[PipelineResult, Optional[WarningMessage]]:
         """Not used - RubberDuck operates in chat mode, not pipeline mode."""
         return PipelineResult.CONTINUE, context.current_warning
+
+    async def _handle_tool_calls(self, response, messages: List[Dict[str, str]]) -> str:
+        """Handle tool calls from Claude and return final response."""
+        try:
+            # Extract text and tool calls from response
+            text_parts = []
+            tool_calls = []
+            
+            for content_block in response.content:
+                if hasattr(content_block, 'type'):
+                    if content_block.type == "text":
+                        text_parts.append(content_block.text)
+                    elif content_block.type == "tool_use":
+                        tool_calls.append(content_block)
+            
+            # Build assistant message with both text and tool calls
+            assistant_message = {
+                "role": "assistant",
+                "content": []
+            }
+            
+            # Add text parts
+            for text in text_parts:
+                assistant_message["content"].append({
+                    "type": "text",
+                    "text": text
+                })
+            
+            # Add tool use blocks
+            for tool_call in tool_calls:
+                assistant_message["content"].append({
+                    "type": "tool_use",
+                    "id": tool_call.id,
+                    "name": tool_call.name,
+                    "input": tool_call.input
+                })
+            
+            messages.append(assistant_message)
+            
+            # Process tool calls and create tool results
+            tool_result_messages = []
+            for tool_call in tool_calls:
+                if tool_call.name == "query_file":
+                    file_path = tool_call.input.get("file_path")
+                    project_id = self.pipeline_data.get("project_id")
+                    
+                    self.logger.info(f"RAG query requested for file: {file_path}")
+                    self.cr_logger.info(f"[{self.name}] RAG: Querying {file_path}")
+                    
+                    # Query the file from database
+                    file_obj = self.query_single_file(project_id, file_path)
+                    
+                    if file_obj and file_obj.content:
+                        tool_result_content = f"File: {file_path}\nContent:\n{file_obj.content}"
+                        self.cr_logger.info(f"[{self.name}] RAG: Retrieved {len(file_obj.content)} chars")
+                    else:
+                        tool_result_content = f"File not found or empty: {file_path}"
+                        self.cr_logger.info(f"[{self.name}] RAG: File not found")
+                    
+                    # Add tool result message
+                    tool_result_msg = {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tool_call.id,
+                                "content": tool_result_content
+                            }
+                        ]
+                    }
+                    messages.append(tool_result_msg)
+                    tool_result_messages.append(tool_result_msg)
+            
+            # Get final response from Claude with tool results
+            final_response = self.client.messages.create(
+                model=self.model,
+                system=self.system_prompt,
+                messages=messages,
+                tools=self.tools,
+                max_tokens=1000
+            )
+            
+            # Extract final text response
+            final_text = ""
+            for block in final_response.content:
+                if hasattr(block, 'type') and block.type == "text":
+                    final_text += block.text
+            
+            # FIXED: Store the complete tool interaction in conversation history
+            # Store the assistant message with tool calls
+            initial_text = " ".join(text_parts) if text_parts else ""
+            if initial_text:
+                self.conversation_history.append({
+                    "role": "assistant",
+                    "content": initial_text
+                })
+            
+            # Store tool results as assistant context (not system - API doesn't accept system role)
+            for tool_call in tool_calls:
+                if tool_call.name == "query_file":
+                    file_path = tool_call.input.get("file_path")
+                    self.conversation_history.append({
+                        "role": "assistant",
+                        "content": f"[I retrieved and analyzed the file: {file_path}]"
+                    })
+            
+            # Store final response
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": final_text
+            })
+            
+            self.logger.info(f"Generated RAG-enhanced response: {final_text[:50]}...")
+            self.cr_logger.info(f"[{self.name}] Ducky (with RAG): {final_text}")
+            
+            return final_text
+            
+        except Exception as e:
+            self.logger.error(f"Tool call handling failed: {str(e)}")
+            self.cr_logger.error(f"[{self.name}] RAG error: {str(e)}")
+            return "I had trouble retrieving the file information. Could you try again?"
