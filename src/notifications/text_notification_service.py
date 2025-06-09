@@ -70,6 +70,24 @@ class TextNotificationService:
                         notification_id
                     ))
                     logger.info("Chat session initiated")
+                    
+                    # Handle notification immediately after chat starts (not when it closes)
+                    logger.info("Handling notification immediately after chat initiation")
+                    
+                    # Get pipeline data for dismissal before removing notification
+                    if notification_data.get('pipeline_data'):
+                        logger.info("Saving chat initiation to database")
+                        success = post_dismissal_from_pipeline_data(notification_data['pipeline_data'])
+                        if success:
+                            logger.info("Chat initiation saved successfully")
+                        else:
+                            logger.error("Failed to save chat initiation to database")
+                    else:
+                        logger.warning("No pipeline data found for notification - chat initiation not saved")
+                    
+                    # Remove notification from UI and badge immediately
+                    self.ui_app.remove_unhandled_notification(notification_id)
+                    logger.info(f"Notification {notification_id} handled immediately after chat initiation")
                 else:
                     logger.error("No pipeline data available for chat - cannot start chat")
                     # Remove notification anyway since user tried to expand
@@ -139,6 +157,24 @@ class TextNotificationService:
                         notification_id
                     ))
                     logger.info("Chat session initiated")
+                    
+                    # Handle notification immediately after chat starts (not when it closes)
+                    logger.info("Handling sticky notification immediately after chat initiation")
+                    
+                    # Get pipeline data for dismissal before removing notification
+                    if notification_data.get('pipeline_data'):
+                        logger.info("Saving chat initiation to database")
+                        success = post_dismissal_from_pipeline_data(notification_data['pipeline_data'])
+                        if success:
+                            logger.info("Chat initiation saved successfully")
+                        else:
+                            logger.error("Failed to save chat initiation to database")
+                    else:
+                        logger.warning("No pipeline data found for notification - chat initiation not saved")
+                    
+                    # Remove notification from UI and badge immediately
+                    self.ui_app.remove_unhandled_notification(notification_id)
+                    logger.info(f"Sticky notification {notification_id} handled immediately after chat initiation")
                 else:
                     logger.error("No pipeline data available for chat - cannot start chat")
                     # Remove notification anyway since user tried to expand

@@ -279,5 +279,5 @@ class TextOverlay:
         if self.on_expand_callback:
             self.on_expand_callback()
         
-        logger.info("Expand functionality not implemented yet")
-        # TODO: Implement expand functionality 
+        # Hide the notification overlay immediately (same as dismiss behavior)
+        self.hide() 

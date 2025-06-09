@@ -116,10 +116,8 @@ class ChatService:
         try:
             logger.info("Closing chat session")
             
-            # Remove notification from badge (as per requirement)
-            if self.notification_id:
-                self.ui_app.remove_unhandled_notification(self.notification_id)
-                logger.info(f"Removed notification {self.notification_id} from badge")
+            # Note: Notification handling now happens when chat opens (not when it closes)
+            # This ensures notifications are handled immediately upon expand button click
             
             self._cleanup_resources()
             logger.info("Chat session closed successfully")
