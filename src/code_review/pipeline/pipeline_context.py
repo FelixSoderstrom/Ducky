@@ -32,14 +32,7 @@ class PipelineContextManager:
         change = changes[0]
         
         # Log file information to code review log
-        cr_logger.info("=" * 80)
-        cr_logger.info(f"CODE REVIEW PIPELINE STARTING")
-        cr_logger.info("=" * 80)
-        cr_logger.info(f"File: {change['path']}")
-        cr_logger.info(f"Project ID: {project_id}")
-        cr_logger.info(f"Is New File: {change.get('is_new_file', False)}")
-        cr_logger.info(f"Last Edit: {change.get('last_edit', 'Unknown')}")
-        cr_logger.info("-" * 80)
+        cr_logger.info(f"PIPELINE START: {change['path']} (Project {project_id})")
         
         # Validate that we have meaningful content to analyze
         old_version = change.get('old_version', "")
@@ -85,14 +78,4 @@ class PipelineContextManager:
     @staticmethod
     def _log_content_preview(old_version: str, new_version: str):
         """Log content preview for debugging."""
-        cr_logger.info(f"Content Analysis:")
-        cr_logger.info(f"  ├─ Old Version: {len(old_version)} characters")
-        if old_version:
-            preview_old = old_version[:200].replace('\n', '\\n')
-            ellipsis = '...' if len(old_version) > 200 else ''
-            cr_logger.info(f"  │   Preview: {preview_old}{ellipsis}")
-        cr_logger.info(f"  └─ New Version: {len(new_version)} characters")
-        if new_version:
-            preview_new = new_version[:200].replace('\n', '\\n')
-            ellipsis = '...' if len(new_version) > 200 else ''
-            cr_logger.info(f"      Preview: {preview_new}{ellipsis}") 
+        cr_logger.info(f"Content: Old={len(old_version)} chars, New={len(new_version)} chars") 

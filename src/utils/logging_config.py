@@ -46,6 +46,9 @@ def setup_logging(log_level: str = "INFO"):
     logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
     
+    # Reduce HTTP client verbosity
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    
     logging.info(f"Logging initialized - Level: {log_level}")
 
 

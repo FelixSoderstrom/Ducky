@@ -24,14 +24,14 @@ class OutputHandler:
         """
         logger.info(f"Notification: {output.notification}")
         logger.info(f"Warning: {output.warning.title}")
-        logger.info(f"Solution: {output.solution}")
+        logger.info(f"Solution: Generated ({len(output.solution)} chars)")
         logger.info(f"File: {output.file_path}")
         logger.info(f"Project ID: {output.project_id}")
         
         # Also log to console for immediate feedback during development
         logger.debug(f"Pipeline output - Notification: {output.notification}")
         logger.debug(f"Pipeline output - Warning: {output.warning.title}")
-        logger.debug(f"Pipeline output - Solution: {output.solution}")
+        logger.debug(f"Pipeline output - Solution: Generated ({len(output.solution)} chars)")
         
         # Convert to dictionary for notification system - NOW WITH FULL CONTEXT
         response = {

@@ -33,7 +33,9 @@ class Context7Tools:
             
             if result.content and len(result.content) > 0:
                 library_id = result.content[0].text.strip()
-                self.logger.info(f"Resolved '{library_name}' to '{library_id}'")
+                # Truncate logging for readability (full response can be very long)
+                log_preview = library_id[:200] + "..." if len(library_id) > 200 else library_id
+                self.logger.info(f"Resolved '{library_name}' to '{log_preview}'")
                 return library_id
             
             return None

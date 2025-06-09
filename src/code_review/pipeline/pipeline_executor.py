@@ -49,8 +49,7 @@ class CodeReviewPipeline:
                 self.logger.info(f"Skipping agent {agent.name} - conditions not met")
                 continue
             
-            cr_logger.info(f"\nAGENT {i+1}/{len(self.agents)}: {agent.name}")
-            cr_logger.info("─" * 60)
+            cr_logger.info(f"AGENT {i+1}/{len(self.agents)}: {agent.name}")
             self.logger.info(f"Running agent {i+1}/{len(self.agents)}: {agent.name}")
             
             try:
@@ -61,15 +60,7 @@ class CodeReviewPipeline:
                     cr_logger.info(f"  {notification}")
                 elif isinstance(agent, CodeWriter):
                     result, solution = agent.analyze(context)
-                    cr_logger.info(f"[{agent.name}] Generated Solution:")
-                    cr_logger.info(f"  Length: {len(solution)} characters")
-                    # Show first few lines of solution
-                    solution_lines = solution.split('\n')
-                    for line in solution_lines[:5]:
-                        cr_logger.info(f"  │ {line}")
-                    if len(solution_lines) > 5:
-                        remaining_lines = len(solution_lines) - 5
-                        cr_logger.info(f"  └─ ... and {remaining_lines} more lines")
+                    cr_logger.info(f"[{agent.name}] Generated Solution: {len(solution)} characters")
                 else:
                     # Standard agent that returns warning message
                     result, updated_warning = agent.analyze(context)
@@ -92,9 +83,7 @@ class CodeReviewPipeline:
                 self.logger.error(f"Agent {agent.name} failed: {str(e)}")
                 continue
         
-        cr_logger.info("\n" + "=" * 80)
         cr_logger.info("PIPELINE COMPLETED")
-        cr_logger.info("=" * 80)
         
         if context.current_warning:
             # Include ALL context data for RubberDuck
@@ -107,7 +96,7 @@ class CodeReviewPipeline:
                 file_path=context.file_path,
                 project_id=context.project_id
             )
-            cr_logger.info(f"Pipeline successful - Generated complete output with full context")
+            cr_logger.info(f"Pipeline successful")
             return output
         
         cr_logger.warning(f"Pipeline completed but no warning message was generated")
