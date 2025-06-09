@@ -56,6 +56,11 @@ class ChatWindow:
         self._is_visible = False
         self._typing_indicator_visible = False
         
+        # Dragging functionality
+        self._drag_start_x = 0
+        self._drag_start_y = 0
+        self._is_dragging = False
+        
         # UI components
         self.messages_frame: Optional[tk.Frame] = None
         self.input_var: Optional[tk.StringVar] = None
@@ -153,15 +158,23 @@ class ChatWindow:
         header_frame.pack(fill='x', padx=CHAT_CONFIG['dimensions']['padding'], 
                          pady=(CHAT_CONFIG['dimensions']['padding'], 5))
         
-        # Title
+        # Title (make it draggable)
         title_label = tk.Label(
             header_frame,
             text="💬 Chat with Ducky",
             bg=CHAT_CONFIG['bg'],
             fg=CHAT_CONFIG['fg'],
-            font=('Arial', 14, 'bold')
+            font=('Arial', 14, 'bold'),
+            cursor='hand2'  # Show hand cursor to indicate draggable
         )
         title_label.pack(side='left')
+        
+        # Make the title label draggable
+        self._make_draggable(title_label)
+        
+        # Also make the header frame itself draggable
+        header_frame.configure(cursor='hand2')
+        self._make_draggable(header_frame)
         
         # Close button
         self._create_button(header_frame, "Close", CHAT_CONFIG['colors']['close'], 
@@ -385,4 +398,53 @@ class ChatWindow:
         if self.on_close:
             self.on_close()
         
-        self.hide() 
+        self.hide()
+    
+    def _make_draggable(self, widget: tk.Widget) -> None:
+        """Make a widget draggable by binding mouse events."""
+        widget.bind('<Button-1>', self._start_drag)
+        widget.bind('<B1-Motion>', self._on_drag)
+        widget.bind('<ButtonRelease-1>', self._stop_drag)
+    
+    def _start_drag(self, event) -> None:
+        """Start dragging the window."""
+        if not self.window:
+            return
+        
+        self._is_dragging = True
+        self._drag_start_x = event.x_root
+        self._drag_start_y = event.y_root
+        
+        # Get current window position
+        window_x = self.window.winfo_x()
+        window_y = self.window.winfo_y()
+        
+        # Calculate offset from mouse to window origin
+        self._drag_offset_x = self._drag_start_x - window_x
+        self._drag_offset_y = self._drag_start_y - window_y
+    
+    def _on_drag(self, event) -> None:
+        """Handle dragging motion."""
+        if not self.window or not self._is_dragging:
+            return
+        
+        # Calculate new window position
+        new_x = event.x_root - self._drag_offset_x
+        new_y = event.y_root - self._drag_offset_y
+        
+        # Ensure window stays on screen
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+        window_width = self.window.winfo_width()
+        window_height = self.window.winfo_height()
+        
+        # Constrain to screen bounds
+        new_x = max(0, min(new_x, screen_width - window_width))
+        new_y = max(0, min(new_y, screen_height - window_height))
+        
+        # Move the window
+        self.window.geometry(f"+{new_x}+{new_y}")
+    
+    def _stop_drag(self, event) -> None:
+        """Stop dragging the window."""
+        self._is_dragging = False 
