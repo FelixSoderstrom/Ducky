@@ -8,13 +8,6 @@ pip install -r requirements.txt
 python main.py
 ```
 
-## Upgrading to Chatterbox TTS (Local Voice)
-If you're upgrading from an older version that used ElevenLabs:
-
-```bash
-python main.py
-```
-
 ## What It Does
 - Monitors your codebase for changes via file watchers
 - Maintains a local SQLite database of your code structure
