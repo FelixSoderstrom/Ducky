@@ -72,7 +72,9 @@ class Context7Tools:
             
             if result.content and len(result.content) > 0:
                 docs = result.content[0].text
-                self.logger.info(f"Retrieved {len(docs)} chars of documentation for '{library_id}' | topic: {topic}")
+                # Truncate library_id for logging to prevent massive dumps
+                log_library_id = library_id[:50] + "..." if len(library_id) > 50 else library_id
+                self.logger.info(f"Retrieved {len(docs)} chars of documentation for '{log_library_id}' | topic: {topic}")
                 return docs
             
             return None
