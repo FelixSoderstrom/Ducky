@@ -21,13 +21,13 @@ class RubberDuck(RAGCapableAgent):
         self.tools = [
             {
                 "name": "query_file",
-                "description": "Query the current content of a specific file from the database. Use this when you need to see the latest version of a file to help the developer.",
+                "description": "Query the current content of a specific file from the current project. Use this when you need to see the latest version of a file to help the developer. You can only access files from the current project.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "file_path": {
                             "type": "string",
-                            "description": "The exact path of the file to retrieve"
+                            "description": "The exact path of the file to retrieve from the current project"
                         }
                     },
                     "required": ["file_path"]
@@ -251,7 +251,7 @@ DUCKY is now being connected to the DEVELOPER.
             
             # Build the context message with instruction to describe the problem
             context_message = self._build_initial_context_message()
-            context_with_instruction = context_message + "\n\nPlease describe the problem briefly in one sentence."
+            context_with_instruction = context_message + "\n\nPlease summarize, very briefly in one sentence, what the CODE REVIEW TEAM has flagged as an issue. You do not need to query the database for this initial summary."
             
             # Create the messages for API call
             messages = [{

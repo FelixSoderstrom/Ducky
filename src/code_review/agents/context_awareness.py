@@ -79,6 +79,14 @@ class ContextAwareness(RAGCapableAgent):
                     requested_paths = agent_request.get("files", [])[:rag_state.max_files_per_request]
                     files = self._retrieve_requested_files(context.project_id, requested_paths)
                     rag_state.add_files(files)
+                    
+                    # PHASE 1: Add retrieved files to affected_files immediately
+                    for file_obj in files:
+                        if file_obj.path not in context.current_warning.affected_files:
+                            context.current_warning.affected_files.append(file_obj.path)
+                            self.logger.info(f"Added {file_obj.path} to affected_files")
+                            self.cr_logger.info(f"[{self.name}] Added to affected_files: {file_obj.path}")
+                    
                     self.logger.info(f"Retrieved {len(files)} files: {[f.path for f in files]}")
                     
                 elif agent_request.get("action") == "complete":
@@ -131,7 +139,7 @@ Consider if this warning might be:
 4. Experimental or work-in-progress code
 5. Following patterns established elsewhere
 
-Respond with JSON:
+Respond with JSON and ensure all string values properly escape control characters like '/n', '/t', etc:
 {{
     "needs_context": true/false,
     "reasoning": "Brief explanation of why context is/isn't needed"
