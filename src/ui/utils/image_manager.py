@@ -32,7 +32,7 @@ class ImageManager:
             self.png_image = ImageTk.PhotoImage(pil_image)
             self.original_image_path = image_path
             
-            logger.info(f"Successfully loaded image: {image_name}")
+            logger.debug(f"Successfully loaded image: {image_name}")
             
         except Exception as e:
             logger.warning(f"Error loading image {image_name}: {e}")

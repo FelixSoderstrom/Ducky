@@ -37,8 +37,8 @@ class ApplicationOrchestrator:
             init_db()
             self.logger.info("Database initialized")
             
-            # Start UI
-            self.app = await start_ui()
+            # Start UI with configuration
+            self.app = await start_ui(self.config)
             self.logger.info("UI started")
             
             return True

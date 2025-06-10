@@ -6,6 +6,7 @@ from src.watcher.compare_versions import FileChange
 from src.code_review.utils.pipeline import code_review_pipeline
 from src.notifications import notify_user
 from src.services.chat_state_service import get_chat_state_service
+from src.events import get_pipeline_event_emitter
 
 logger = logging.getLogger("ducky.code_review.pipeline_coordinator")
 
@@ -17,6 +18,7 @@ class PipelineCoordinator:
         self.max_concurrent_pipelines = max_concurrent_pipelines
         self.running_pipelines: Set[int] = set()  # Track running pipeline IDs
         self.chat_state_service = get_chat_state_service()  # Initialize chat state service
+        self.event_emitter = get_pipeline_event_emitter()  # Get event emitter for pipeline events
         self.logger = logger
         
     def is_pipeline_running(self, project_id: Optional[int] = None) -> bool:
@@ -95,6 +97,9 @@ class PipelineCoordinator:
         self.logger.info(f"Starting code review pipeline for project {project_id} (chat_active={chat_status['is_active']}, pipelines={len(self.running_pipelines)}/{self.max_concurrent_pipelines})")
         self.running_pipelines.add(project_id)
         
+        # Emit pipeline started event
+        self.event_emitter.emit_started(project_id, changes_count=len(changes))
+        
         asyncio.create_task(
             self._execute_pipeline_with_cleanup(changes, project_id, app)
         )
@@ -114,13 +119,19 @@ class PipelineCoordinator:
             
             if pipeline_response:
                 self.logger.info(f"Code review pipeline completed successfully for project {project_id}")
+                # Emit pipeline completed event
+                self.event_emitter.emit_completed(project_id, has_output=True)
                 # Notify the user based on their preferences
                 await notify_user(pipeline_response, project_id, app)
             else:
                 self.logger.info(f"Code review pipeline completed - no issues found for project {project_id}")
+                # Emit pipeline cancelled event (no issues found)
+                self.event_emitter.emit_cancelled(project_id, "No issues found")
                 
         except Exception as e:
             self.logger.error(f"Code review pipeline error for project {project_id}: {str(e)}")
+            # Emit pipeline failed event
+            self.event_emitter.emit_failed(project_id, str(e))
         finally:
             # Always remove from running set when pipeline is done
             self.running_pipelines.discard(project_id)
