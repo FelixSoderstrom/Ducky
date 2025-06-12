@@ -1,6 +1,6 @@
 """Base class for agents with RAG (Retrieval-Augmented Generation) capabilities."""
 
-from typing import List
+from typing import List, Dict, Any
 from sqlalchemy import select
 
 from .base_agent import CodeReviewAgent
@@ -57,4 +57,24 @@ class RAGCapableAgent(CodeReviewAgent):
             ).limit(max_results)
             result = session.execute(stmt)
             # Return actual File objects from database (content will be loaded if accessed)
-            return result.scalars().all() 
+            return result.scalars().all()
+    
+    def search_files_by_name(self, project_id: int, filename_pattern: str) -> List[Dict[str, Any]]:
+        """
+        Search for files by filename pattern and return name/path pairs.
+        
+        Args:
+            project_id: Project ID to search within
+            filename_pattern: Pattern to match in filenames (e.g., "main.py", "*.py", "test")
+            
+        Returns:
+            List of dictionaries with 'name' and 'path' keys
+        """
+        with get_db() as session:
+            stmt = select(File.name, File.path).where(
+                File.project_id == project_id,
+                File.name.contains(filename_pattern),
+                File.is_dir == False  # Only return files, not directories
+            )
+            result = session.execute(stmt)
+            return [{"name": row.name, "path": row.path} for row in result] 

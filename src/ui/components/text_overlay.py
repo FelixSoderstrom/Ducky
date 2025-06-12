@@ -280,4 +280,4 @@ class TextOverlay:
             self.on_expand_callback()
         
         # Hide the notification overlay immediately (same as dismiss behavior)
-        self.hide() 
+        self.hide()

@@ -32,6 +32,20 @@ class RubberDuck(RAGCapableAgent):
                     },
                     "required": ["file_path"]
                 }
+            },
+            {
+                "name": "search_files",
+                "description": "Search for files in the current project by filename. Use this when the developer mentions a file name but you don't know the exact path. Returns a list of matching filenames with their full paths.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "filename_pattern": {
+                            "type": "string",
+                            "description": "The filename or pattern to search for (e.g., 'main.py', 'test', 'utils')"
+                        }
+                    },
+                    "required": ["filename_pattern"]
+                }
             }
         ]
         
@@ -355,6 +369,34 @@ DUCKY is now being connected to the DEVELOPER.
                             "content": tool_result_content
                         }]
                     })
+                elif tool_call.name == "search_files":
+                    filename_pattern = tool_call.input.get("filename_pattern")
+                    project_id = self.pipeline_data.get("project_id")
+                    
+                    self.logger.info(f"RAG search requested for filename pattern: {filename_pattern}")
+                    self.cr_logger.info(f"[{self.name}] RAG: Searching files with pattern '{filename_pattern}'")
+                    
+                    # Search for files by name
+                    search_results = self.search_files_by_name(project_id, filename_pattern)
+                    
+                    if search_results:
+                        tool_result_content = "These files are currently present in the codebase:\n"
+                        for result in search_results:
+                            tool_result_content += f"{result['name']}: {result['path']},\n"
+                        tool_result_content += "Please select the file most likely referenced by the DEVELOPER and then use the query_file tool to see its content."
+                        self.cr_logger.info(f"[{self.name}] RAG: Found {len(search_results)} files")
+                    else:
+                        tool_result_content = f"No files found matching pattern '{filename_pattern}'"
+                        self.cr_logger.info(f"[{self.name}] RAG: No files found")
+                    
+                    messages.append({
+                        "role": "user",
+                        "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": tool_call.id,
+                            "content": tool_result_content
+                        }]
+                    })
             
             # Get final response
             final_response = self.client.messages.create(
@@ -462,41 +504,156 @@ DUCKY is now being connected to the DEVELOPER.
                     }
                     messages.append(tool_result_msg)
                     tool_result_messages.append(tool_result_msg)
+                elif tool_call.name == "search_files":
+                    filename_pattern = tool_call.input.get("filename_pattern")
+                    project_id = self.pipeline_data.get("project_id")
+                    
+                    self.logger.info(f"RAG search requested for filename pattern: {filename_pattern}")
+                    self.cr_logger.info(f"[{self.name}] RAG: Searching files with pattern '{filename_pattern}'")
+                    
+                    # Search for files by name
+                    search_results = self.search_files_by_name(project_id, filename_pattern)
+                    
+                    if search_results:
+                        tool_result_content = "These files are currently present in the codebase:\n"
+                        for result in search_results:
+                            tool_result_content += f"{result['name']}: {result['path']},\n"
+                        tool_result_content += "Please select the file most likely referenced by the DEVELOPER and then use the query_file tool to see its content."
+                        self.cr_logger.info(f"[{self.name}] RAG: Found {len(search_results)} files")
+                    else:
+                        tool_result_content = f"No files found matching pattern '{filename_pattern}'"
+                        self.cr_logger.info(f"[{self.name}] RAG: No files found")
+                    
+                    # Add tool result message
+                    tool_result_msg = {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tool_call.id,
+                                "content": tool_result_content
+                            }
+                        ]
+                    }
+                    messages.append(tool_result_msg)
+                    tool_result_messages.append(tool_result_msg)
             
-            # Get final response from Claude with tool results
-            final_response = self.client.messages.create(
-                model=self.model,
-                system=self.system_prompt,
-                messages=messages,
-                tools=self.tools,
-                max_tokens=1000
-            )
-            
-            # Extract final text response
-            final_text = ""
-            for block in final_response.content:
-                if hasattr(block, 'type') and block.type == "text":
-                    final_text += block.text
-            
-            # FIXED: Store the complete tool interaction in conversation history
-            # Store the assistant message with tool calls
-            initial_text = " ".join(text_parts) if text_parts else ""
-            if initial_text:
-                self.conversation_history.append({
+            # Keep calling Claude until it stops making tool calls
+            while True:
+                final_response = self.client.messages.create(
+                    model=self.model,
+                    system=self.system_prompt,
+                    messages=messages,
+                    tools=self.tools,
+                    max_tokens=1000
+                )
+                
+                # Check if this response has more tool calls
+                response_text_parts = []
+                response_tool_calls = []
+                
+                for block in final_response.content:
+                    if hasattr(block, 'type'):
+                        if block.type == "text":
+                            response_text_parts.append(block.text)
+                        elif block.type == "tool_use":
+                            response_tool_calls.append(block)
+                
+                # If no more tool calls, we're done
+                if not response_tool_calls:
+                    final_text = " ".join(response_text_parts)
+                    break
+                
+                # Handle the additional tool calls
+                assistant_message = {
                     "role": "assistant",
-                    "content": initial_text
-                })
-            
-            # Store tool results as assistant context (not system - API doesn't accept system role)
-            for tool_call in tool_calls:
-                if tool_call.name == "query_file":
-                    file_path = tool_call.input.get("file_path")
-                    self.conversation_history.append({
-                        "role": "assistant",
-                        "content": f"[I retrieved and analyzed the file: {file_path}]"
+                    "content": []
+                }
+                
+                # Add text parts
+                for text in response_text_parts:
+                    if text.strip():  # Only add non-empty text
+                        assistant_message["content"].append({
+                            "type": "text",
+                            "text": text
+                        })
+                
+                # Add tool use blocks
+                for tool_call in response_tool_calls:
+                    assistant_message["content"].append({
+                        "type": "tool_use",
+                        "id": tool_call.id,
+                        "name": tool_call.name,
+                        "input": tool_call.input
                     })
+                
+                messages.append(assistant_message)
+                
+                # Process the new tool calls
+                for tool_call in response_tool_calls:
+                    if tool_call.name == "query_file":
+                        file_path = tool_call.input.get("file_path")
+                        project_id = self.pipeline_data.get("project_id")
+                        
+                        self.logger.info(f"RAG query requested for file: {file_path}")
+                        self.cr_logger.info(f"[{self.name}] RAG: Querying {file_path}")
+                        
+                        # Query the file from database
+                        file_obj = self.query_single_file(project_id, file_path)
+                        
+                        if file_obj and file_obj.content:
+                            tool_result_content = f"File: {file_path}\nContent:\n{file_obj.content}"
+                            self.cr_logger.info(f"[{self.name}] RAG: Retrieved {len(file_obj.content)} chars")
+                        else:
+                            tool_result_content = f"File not found or empty: {file_path}"
+                            self.cr_logger.info(f"[{self.name}] RAG: File not found")
+                        
+                        # Add tool result message
+                        tool_result_msg = {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": tool_call.id,
+                                    "content": tool_result_content
+                                }
+                            ]
+                        }
+                        messages.append(tool_result_msg)
+                    elif tool_call.name == "search_files":
+                        filename_pattern = tool_call.input.get("filename_pattern")
+                        project_id = self.pipeline_data.get("project_id")
+                        
+                        self.logger.info(f"RAG search requested for filename pattern: {filename_pattern}")
+                        self.cr_logger.info(f"[{self.name}] RAG: Searching files with pattern '{filename_pattern}'")
+                        
+                        # Search for files by name
+                        search_results = self.search_files_by_name(project_id, filename_pattern)
+                        
+                        if search_results:
+                            tool_result_content = "These files are currently present in the codebase:\n"
+                            for result in search_results:
+                                tool_result_content += f"{result['name']}: {result['path']},\n"
+                            tool_result_content += "Please select the file most likely referenced by the DEVELOPER and then use the query_file tool to see its content."
+                            self.cr_logger.info(f"[{self.name}] RAG: Found {len(search_results)} files")
+                        else:
+                            tool_result_content = f"No files found matching pattern '{filename_pattern}'"
+                            self.cr_logger.info(f"[{self.name}] RAG: No files found")
+                        
+                        # Add tool result message
+                        tool_result_msg = {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": tool_call.id,
+                                    "content": tool_result_content
+                                }
+                            ]
+                        }
+                        messages.append(tool_result_msg)
             
-            # Store final response
+            # Store the final response in conversation history
             self.conversation_history.append({
                 "role": "assistant",
                 "content": final_text
