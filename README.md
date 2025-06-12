@@ -63,12 +63,6 @@ Ducky uses [Chatterbox TTS](https://github.com/resemble-ai/chatterbox) for voice
 - **Emotion control** - Adjustable exaggeration and intensity
 
 
-### Development Status
-Development is taking place on the dev branch.
-Working features are merged to this branch (main) after testing.
-I am very much still in the development phase, however I wanted to share this to the main branch even though its not yet finished.
-The app very much works but still needs tweaking, perticularly around the prompt engineering part of the code review pipeline.
-I also need to de-spaghettify alot of the code that has sort of gone unattended for the past week (my bad).
 
 I never recommend cloning the dev branch and will never promise working versions on the dev branch.
 To get a sneak peek of what coming around the corner, check out my [Miro Board](https://miro.com/app/board/uXjVIBdU1Lc=/)
