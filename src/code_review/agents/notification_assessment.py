@@ -2,7 +2,8 @@ from typing import Optional, List
 import json
 from anthropic import Anthropic
 
-from ..utils.pipeline import RAGCapableAgent, PipelineResult, WarningMessage, AgentContext
+from .base.rag_agent import RAGCapableAgent
+from ..models.pipeline_models import PipelineResult, WarningMessage, AgentContext
 from ...database.models import Dismissal
 
 
@@ -58,12 +59,13 @@ class NotificationAssessment(RAGCapableAgent):
             messages = [
                 {
                     "role": "user",
-                    "content": f"""Current Warning:
+                    "content": f"""
+Current Warning:
 Title: {warning.title}
 Description: {warning.description}
 Severity: {warning.severity}
 
-User's Dismissal History:
+DEVELOPERS previously dismissed warnings:
 {dismissal_summary}
 
 Based on the user's dismissal history, should we notify them about this current warning? 

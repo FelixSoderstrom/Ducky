@@ -19,6 +19,10 @@ class AppConfig:
     # UI configuration
     startup_timeout_seconds: int = 30
     
+    # Animation configuration
+    enable_pipeline_animation: bool = True
+    animation_cycle_interval: float = 1.0
+    
     @classmethod
     def default(cls) -> "AppConfig":
         """Get default application configuration."""
@@ -34,5 +38,7 @@ class AppConfig:
             max_concurrent_pipelines=int(os.getenv("DUCKY_MAX_PIPELINES", "1")),
             log_level=os.getenv("DUCKY_LOG_LEVEL", "INFO"),
             enable_code_review_logging=os.getenv("DUCKY_CODE_REVIEW_LOGGING", "true").lower() == "true",
-            startup_timeout_seconds=int(os.getenv("DUCKY_STARTUP_TIMEOUT", "30"))
+            startup_timeout_seconds=int(os.getenv("DUCKY_STARTUP_TIMEOUT", "30")),
+            enable_pipeline_animation=os.getenv("DUCKY_PIPELINE_ANIMATION", "true").lower() == "true",
+            animation_cycle_interval=float(os.getenv("DUCKY_ANIMATION_INTERVAL", "1.0"))
         ) 

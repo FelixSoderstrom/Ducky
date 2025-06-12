@@ -5,6 +5,8 @@ from typing import Dict, Any, Optional, List, Set
 from src.watcher.compare_versions import FileChange
 from src.code_review.utils.pipeline import code_review_pipeline
 from src.notifications import notify_user
+from src.services.chat_state_service import get_chat_state_service
+from src.events import get_pipeline_event_emitter
 
 logger = logging.getLogger("ducky.code_review.pipeline_coordinator")
 
@@ -15,6 +17,8 @@ class PipelineCoordinator:
     def __init__(self, max_concurrent_pipelines: int = 1):
         self.max_concurrent_pipelines = max_concurrent_pipelines
         self.running_pipelines: Set[int] = set()  # Track running pipeline IDs
+        self.chat_state_service = get_chat_state_service()  # Initialize chat state service
+        self.event_emitter = get_pipeline_event_emitter()  # Get event emitter for pipeline events
         self.logger = logger
         
     def is_pipeline_running(self, project_id: Optional[int] = None) -> bool:
@@ -37,16 +41,26 @@ class PipelineCoordinator:
             project_id: ID of the project wanting to start a pipeline
             
         Returns:
-            True if pipeline can start, False if at capacity or already running for this project
+            True if pipeline can start, False if blocked by running pipeline, capacity, or active chat
         """
+        # Check if chat is active first
+        if self.chat_state_service.is_chat_active():
+            active_notification_id = self.chat_state_service.get_active_notification_id()
+            self.logger.info(f"Pipeline blocked for project {project_id} - chat session active (notification: {active_notification_id})")
+            return False
+        
         # Don't start if this project already has a running pipeline
         if project_id in self.running_pipelines:
+            self.logger.debug(f"Pipeline blocked for project {project_id} - already running")
             return False
             
         # Don't start if we're at max capacity
         if len(self.running_pipelines) >= self.max_concurrent_pipelines:
+            self.logger.debug(f"Pipeline blocked for project {project_id} - at capacity ({len(self.running_pipelines)}/{self.max_concurrent_pipelines})")
             return False
-            
+        
+        # All checks passed
+        self.logger.debug(f"Pipeline can start for project {project_id} - all checks passed")
         return True
     
     async def execute_if_available(self, changes: List[FileChange], project_id: int, app) -> bool:
@@ -58,18 +72,33 @@ class PipelineCoordinator:
             app: UI application instance for notifications
             
         Returns:
-            True if pipeline was started, False if skipped due to capacity
+            True if pipeline was started, False if skipped due to capacity/chat/existing pipeline
         """
+        # Log current state for debugging
+        chat_status = self.chat_state_service.get_chat_status()
+        self.logger.debug(f"Pipeline execution check for project {project_id}: "
+                         f"chat_active={chat_status['is_active']}, "
+                         f"active_notification={chat_status['active_notification_id']}, "
+                         f"running_pipelines={len(self.running_pipelines)}, "
+                         f"max_concurrent={self.max_concurrent_pipelines}")
+        
         if not self.can_start_pipeline(project_id):
-            if project_id in self.running_pipelines:
-                self.logger.info(f"Pipeline already running for project {project_id} - skipping")
+            # Detailed logging for why pipeline was blocked
+            if self.chat_state_service.is_chat_active():
+                active_notification_id = self.chat_state_service.get_active_notification_id()
+                self.logger.info(f"Pipeline execution BLOCKED for project {project_id} - chat session active (notification: {active_notification_id})")
+            elif project_id in self.running_pipelines:
+                self.logger.info(f"Pipeline execution BLOCKED for project {project_id} - already running")
             else:
-                self.logger.info(f"Pipeline capacity exceeded ({len(self.running_pipelines)}/{self.max_concurrent_pipelines}) - skipping")
+                self.logger.info(f"Pipeline execution BLOCKED for project {project_id} - capacity exceeded ({len(self.running_pipelines)}/{self.max_concurrent_pipelines})")
             return False
         
-        # Start pipeline asynchronously
-        self.logger.info(f"Starting code review pipeline for project {project_id}")
+        # All checks passed - start pipeline
+        self.logger.info(f"Starting code review pipeline for project {project_id} (chat_active={chat_status['is_active']}, pipelines={len(self.running_pipelines)}/{self.max_concurrent_pipelines})")
         self.running_pipelines.add(project_id)
+        
+        # Emit pipeline started event
+        self.event_emitter.emit_started(project_id, changes_count=len(changes))
         
         asyncio.create_task(
             self._execute_pipeline_with_cleanup(changes, project_id, app)
@@ -90,13 +119,19 @@ class PipelineCoordinator:
             
             if pipeline_response:
                 self.logger.info(f"Code review pipeline completed successfully for project {project_id}")
+                # Emit pipeline completed event
+                self.event_emitter.emit_completed(project_id, has_output=True)
                 # Notify the user based on their preferences
                 await notify_user(pipeline_response, project_id, app)
             else:
                 self.logger.info(f"Code review pipeline completed - no issues found for project {project_id}")
+                # Emit pipeline cancelled event (no issues found)
+                self.event_emitter.emit_cancelled(project_id, "No issues found")
                 
         except Exception as e:
             self.logger.error(f"Code review pipeline error for project {project_id}: {str(e)}")
+            # Emit pipeline failed event
+            self.event_emitter.emit_failed(project_id, str(e))
         finally:
             # Always remove from running set when pipeline is done
             self.running_pipelines.discard(project_id)
@@ -136,9 +171,13 @@ class PipelineCoordinator:
         Returns:
             Dictionary with pipeline status details
         """
+        chat_status = self.chat_state_service.get_chat_status()
         return {
             "running_count": len(self.running_pipelines),
             "max_concurrent": self.max_concurrent_pipelines,
             "running_project_ids": list(self.running_pipelines),
-            "capacity_available": len(self.running_pipelines) < self.max_concurrent_pipelines
+            "capacity_available": len(self.running_pipelines) < self.max_concurrent_pipelines,
+            "chat_active": chat_status["is_active"],
+            "active_chat_notification_id": chat_status["active_notification_id"],
+            "can_start_new_pipeline": len(self.running_pipelines) < self.max_concurrent_pipelines and not chat_status["is_active"]
         } 

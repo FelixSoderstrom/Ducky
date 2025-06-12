@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Callable
 
 logger = logging.getLogger("ducky.ui.notification_list")
 
@@ -18,6 +18,7 @@ class NotificationListDialog:
         self._update_job: Optional[str] = None
         self._last_ui_pos: Optional[Tuple[int, int]] = None
         self._last_ui_size: Optional[Tuple[int, int]] = None
+        self.close_callback: Optional[Callable] = None  # Callback for when dialog is closed
         
     def show(self) -> None:
         """Show the notification list dialog."""
@@ -41,6 +42,13 @@ class NotificationListDialog:
             self.window.destroy()
             self.window = None
             logger.info("Notification list dialog hidden")
+        
+        # Notify the callback that dialog was closed
+        if self.close_callback:
+            try:
+                self.close_callback()
+            except Exception as e:
+                logger.error(f"Error in dialog close callback: {str(e)}")
     
     def _create_window(self) -> None:
         """Create the dialog window."""
@@ -348,4 +356,12 @@ class NotificationListDialog:
         except Exception as e:
             logger.error(f"Error updating notification list position: {str(e)}")
             # Stop tracking on error to prevent spam
-            self._stop_position_tracking() 
+            self._stop_position_tracking()
+    
+    def set_close_callback(self, callback: Callable) -> None:
+        """Set callback function to be called when dialog is closed.
+        
+        Args:
+            callback: Function to call when dialog is closed
+        """
+        self.close_callback = callback 

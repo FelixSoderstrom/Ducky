@@ -1,4 +1,15 @@
 sqlalchemy==2.0.41
 pillow==10.4.0
 anthropic==0.52.0
-elevenlabs==2.1.0
+chatterbox-tts
+
+# MCP (Model Context Protocol) dependencies for Context7 integration
+mcp==1.1.0
+anyio==4.6.0
+
+# PyTorch with CUDA 11.8 support for GPU acceleration
+# From: https://pytorch.org/get-started/previous-versions/
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.6.0
+torchvision==0.21.0
+torchaudio==2.6.0

@@ -3,13 +3,13 @@ from sqlalchemy import String, Boolean, Text, ForeignKey, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import TYPE_CHECKING
 
-from .base import Base
+from .base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from .projects import Project
 
 
-class File(Base):
+class File(Base, TimestampMixin):
     """File model representing files and directories in a project."""
 
     __tablename__ = "files"

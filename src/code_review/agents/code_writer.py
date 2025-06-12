@@ -8,11 +8,12 @@ from typing import Optional
 import json
 from anthropic import Anthropic
 
-from ..utils.pipeline import CodeReviewAgent, PipelineResult, WarningMessage, AgentContext
+from .base.base_agent import CodeReviewAgent
+from ..models.pipeline_models import PipelineResult, WarningMessage, AgentContext
 
 
 class CodeWriter(CodeReviewAgent):
-    """Agent that writes corrected code examples."""
+    """Agent that creates improved code examples addressing identified issues."""
     
     def __init__(self, api_key: str):
         super().__init__("CodeWriter", "code_writer")
@@ -74,14 +75,8 @@ Suggested Improvements:
 Metadata: {context.current_warning.metadata}
 
 Please provide a corrected version of the code that addresses all identified issues while:
-1. Preserving the original functionality and intent
-2. Applying all fixes and improvements identified by the analysis
-3. Writing clean, readable code that serves as a good example  
-4. Including helpful comments explaining the improvements made
-5. Focusing on teaching through example rather than just fixing
-6. Ensuring the solution is practical and immediately applicable
 
-Respond with the complete corrected code, including explanatory comments highlighting the improvements."""
+Respond with the complete corrected code and nothing else."""
                 }
             ]
             

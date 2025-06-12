@@ -6,7 +6,6 @@ from src.config.app_config import AppConfig
 from src.database.init_db import init_db
 from src.ui.start_ui import start_ui
 from src.app.project_initializer import ProjectInitializer
-from src.watcher.project_manager import check_existing_project
 from src.watcher.change_scanner import ChangeScanner
 from src.code_review.pipeline_coordinator import PipelineCoordinator
 
@@ -38,8 +37,8 @@ class ApplicationOrchestrator:
             init_db()
             self.logger.info("Database initialized")
             
-            # Start UI
-            self.app = await start_ui()
+            # Start UI with configuration
+            self.app = await start_ui(self.config)
             self.logger.info("UI started")
             
             return True
@@ -53,39 +52,13 @@ class ApplicationOrchestrator:
         Returns:
             True if project setup successful, False otherwise
         """
-        # Get project directory from user
-        root_path = await self.project_initializer.get_project_directory()
-        if not root_path:
-            self.logger.warning("No directory selected. Exiting...")
+        # Use the ProjectInitializer's unified setup_project method
+        self.project = await self.project_initializer.setup_project(self.app)
+        if not self.project:
+            self.logger.warning("Project setup cancelled or failed")
             return False
-        
-        # Check if project exists and handle accordingly
-        existing_project = check_existing_project(root_path)
-        
-        if existing_project:
-            # Handle existing project
-            success = await self.project_initializer.handle_existing_project(existing_project, root_path)
-            if not success:
-                return False
-                
-            self.project = existing_project
-            self.app.set_current_project_path(root_path)
-            self.logger.info(f"Existing project '{existing_project.name}' ready for monitoring")
             
-        else:
-            # Handle new project initialization
-            preferences = await self.project_initializer.collect_user_preferences(self.app)
-            if not preferences:
-                return False
-            
-            project = await self.project_initializer.setup_new_project(root_path, preferences)
-            if not project:
-                return False
-                
-            self.project = project
-            self.app.set_current_project_path(root_path)
-            self.logger.info(f"New project '{project.name}' ready for monitoring")
-        
+        self.logger.info(f"Project '{self.project.name}' ready for monitoring")
         return True
     
     async def run(self) -> None:

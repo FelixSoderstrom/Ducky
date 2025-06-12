@@ -4,18 +4,20 @@
 
 # Returns: enhanced warning message from a syntax standpoint
 
-from typing import Optional
+from typing import Optional, Dict, Any
 import json
+from datetime import datetime
 from anthropic import Anthropic
 
-from ..utils.pipeline import MCPCapableAgent, PipelineResult, WarningMessage, AgentContext
+from .base.mcp_agent import MCPCapableAgent
+from ..models.pipeline_models import PipelineResult, WarningMessage, AgentContext
 
 
-class SyntaxValidation(MCPCapableAgent):
+class DocumentationValidator(MCPCapableAgent):
     """Agent that checks syntax and best practices using documentation."""
     
     def __init__(self, api_key: str):
-        super().__init__("SyntaxCheck", "syntax_check")
+        super().__init__("DocumentationValidator", "syntax_check")
         self.client = Anthropic(api_key=api_key)
         self.model = "claude-3-5-sonnet-20241022"
     
@@ -47,9 +49,17 @@ class SyntaxValidation(MCPCapableAgent):
             
         except Exception as e:
             self.logger.error(f"Syntax validation failed: {str(e)}")
-            # On error, continue with original warning
+            # On error, continue with original warning but add error info
             if context.current_warning:
-                context.current_warning.metadata["syntax_check_error"] = str(e)
+                # Use additive approach for error metadata
+                context.current_warning.add_agent_analysis(
+                    agent_name="DocumentationValidator",
+                    analysis_data={
+                        "description": "Syntax analysis failed due to an error",
+                        "suggestions": ["Manual syntax review recommended due to analysis failure"],
+                        "metadata": {"error": str(e), "status": "failed"}
+                    }
+                )
             return PipelineResult.CONTINUE, context.current_warning
     
     def _perform_syntax_analysis(self, context: AgentContext, doc_info: str) -> dict:
@@ -87,7 +97,7 @@ Respond with JSON:
     "best_practice_violations": ["list of best practice issues"],
     "recommendations": ["list of specific improvement suggestions"],
     "severity_adjustment": "none/increase/decrease",
-    "additional_suggestions": ["syntax-specific suggestions to add"]
+    "additional_suggestions": ["specific suggestions to add"]
 }}"""
                 }
             ]
@@ -113,11 +123,20 @@ Respond with JSON:
         """Parse LLM response to extract syntax analysis."""
         try:
             import re
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            # Try to find JSON block between triple backticks first
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response, re.DOTALL)
             if json_match:
-                response_data = json.loads(json_match.group())
+                json_text = json_match.group(1)
             else:
-                response_data = json.loads(response)
+                # Fallback: look for any JSON object
+                json_match = re.search(r'\{[^}]*(?:\{[^}]*\}[^}]*)*\}', response, re.DOTALL)
+                if json_match:
+                    json_text = json_match.group()
+                else:
+                    # Last resort: try to parse the whole response
+                    json_text = response.strip()
+            
+            response_data = json.loads(json_text)
             
             # Log key findings
             syntax_errors = response_data.get('syntax_errors', [])
@@ -132,6 +151,7 @@ Respond with JSON:
             
         except (json.JSONDecodeError, KeyError) as e:
             self.logger.warning(f"Failed to parse syntax analysis: {e}")
+            self.logger.debug(f"Raw response: {response[:500]}...")
             return {
                 "syntax_errors": [],
                 "recommendations": [response[:300] + "..." if len(response) > 300 else response],
@@ -140,33 +160,33 @@ Respond with JSON:
     
     def _enhance_warning_with_syntax(self, warning: WarningMessage, analysis: dict, doc_consulted: bool) -> WarningMessage:
         """Enhance the warning message with syntax analysis findings."""
-        # Create a copy of the warning to avoid mutating the original
-        enhanced_warning = WarningMessage(
-            title=warning.title,
-            severity=self._adjust_severity(warning.severity, analysis.get('severity_adjustment', 'none')),
-            description=self._enhance_description_with_syntax(warning.description, analysis),
-            suggestions=warning.suggestions.copy(),
-            affected_files=warning.affected_files.copy(),
-            confidence=warning.confidence,
-            metadata=warning.metadata.copy()
+        # Add syntax analysis description
+        syntax_description = self._build_syntax_description(analysis)
+        
+        # Get additional suggestions from analysis
+        additional_suggestions = analysis.get('additional_suggestions', [])
+        if not additional_suggestions:
+            additional_suggestions = ["Follow current syntax standards and best practices"]
+        
+        # Add syntax findings to the existing warning
+        enhanced_warning = warning.add_agent_analysis(
+            agent_name="DocumentationValidator",
+            analysis_data={
+                "description": syntax_description,
+                "suggestions": additional_suggestions,
+                "metadata": {
+                    "syntax_checked": True,
+                    "documentation_consulted": doc_consulted,
+                    "syntax_errors_found": len(analysis.get('syntax_errors', [])),
+                    "deprecated_patterns_found": len(analysis.get('deprecated_patterns', [])),
+                    "best_practice_violations": len(analysis.get('best_practice_violations', [])),
+                    "analysis_timestamp": datetime.now().isoformat()
+                }
+            }
         )
         
-        # Add syntax-specific suggestions
-        additional_suggestions = analysis.get('additional_suggestions', [])
-        enhanced_warning.suggestions.extend(additional_suggestions)
-        
-        # Add default syntax suggestion
-        enhanced_warning.suggestions.append("Follow current syntax standards and best practices")
-        
-        # Update metadata
-        enhanced_warning.metadata.update({
-            "syntax_checked": True,
-            "documentation_consulted": doc_consulted,
-            "syntax_errors_found": len(analysis.get('syntax_errors', [])),
-            "deprecated_patterns_found": len(analysis.get('deprecated_patterns', [])),
-            "best_practice_violations": len(analysis.get('best_practice_violations', [])),
-            "agent": "SyntaxCheck"
-        })
+        # Adjust severity if needed
+        enhanced_warning.severity = self._adjust_severity(warning.severity, analysis.get('severity_adjustment', 'none'))
         
         return enhanced_warning
     
@@ -187,6 +207,27 @@ Respond with JSON:
             pass
         
         return current_severity
+    
+    def _build_syntax_description(self, analysis: dict) -> str:
+        """Build description from syntax analysis findings."""
+        syntax_issues = []
+        
+        syntax_errors = analysis.get('syntax_errors', [])
+        if syntax_errors:
+            syntax_issues.append(f"Syntax errors found: {', '.join(syntax_errors[:3])}")
+        
+        deprecated = analysis.get('deprecated_patterns', [])
+        if deprecated:
+            syntax_issues.append(f"Deprecated patterns: {', '.join(deprecated[:2])}")
+        
+        violations = analysis.get('best_practice_violations', [])
+        if violations:
+            syntax_issues.append(f"Best practice violations: {', '.join(violations[:2])}")
+        
+        if syntax_issues:
+            return f"Syntax analysis findings: {' | '.join(syntax_issues)}"
+        
+        return "Code follows current syntax standards and best practices"
     
     def _enhance_description_with_syntax(self, original_description: str, analysis: dict) -> str:
         """Enhance the warning description with syntax findings."""
